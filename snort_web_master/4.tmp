@@ -1,1 +1,1 @@
-alert TCP !$HOME_NET any -> any any(msg: 4;pcre: 'sssbvbfc';content: '56646';only;depth: '5.5';content: 'test';tag;;sid:26; metadata: employee 'snort-master', group '', name '4', treatment '', keywords 'None', date '19-04-2023 14:13:43', document '',description '345345345';  tag:session,10,packets;)
+alert TCP !$HOME_NET any -> any any(msg: 4;pcre: "sssbvbfc"; content: "56646"; sid:14; metadata: employee "snort-master", group "", name "4", treatment "", keywords "None", date "02-05-2023 13:14:40", document "",description "345345345";  tag:session,10,packets;)

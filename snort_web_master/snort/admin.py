@@ -134,8 +134,23 @@ class SnortRuleAdminForm(forms.ModelForm):
         cur_rule.type = self.data.get("type")
         cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
         cur_rule.document = self.data.get("document")
-
-        validate_pcap_snort(self.cleaned_data.get("pcap_sanity_check"), cur_rule)
+        min_allowed = 0
+        max_allowed = 0
+        try:
+            max_allowed = int(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(str(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"})) + " for MAX_SANITY_MATCH_ALLOWED is not a valid int")
+            return
+        try:
+            min_allowed = int(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(
+                    str(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"})) + " for MIN_SANITY_MATCH_ALLOWED is not a valid int")
+            return
+        count = validate_pcap_snort(self.cleaned_data.get("pcap_sanity_check"), cur_rule)
+        print(f"clean_pcap_sanity_check: {min_allowed} <= int({count}) <= {max_allowed}")
+        if min_allowed <= count <= max_allowed:
+            return self.cleaned_data["pcap_sanity_check"]
         return self.cleaned_data["pcap_sanity_check"]
 
     # only admin can activate admin locked rule
@@ -161,21 +176,31 @@ class SnortRuleAdminForm(forms.ModelForm):
         cur_rule.type = self.data.get("type")
         cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
         cur_rule.document = self.data.get("document")
-
+        try:
+            max_allowed = int(Setting.objects.get(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(str(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"})) + " for MAX_SANITY_MATCH_ALLOWED is not a valid int")
+            return
+        try:
+            min_allowed = int(Setting.objects.get(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(
+                    str(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"})) + " for MIN_SANITY_MATCH_ALLOWED is not a valid int")
+            return
         count = validate_pcap_snort(self.cleaned_data.get("pcap_legal_check"), cur_rule)
-        max_allowd = self.cleaned_data["MAX_MATCH_ALLOWD"]
-        if int(count) > max_allowd:
+        print(f"clean_pcap_legal_check: {min_allowed} <= int({count}) <= {max_allowed}")
+        if min_allowed <= int(count) <= max_allowed:
+            self.cleaned_data["admin_locked"] = False
+            self.instance.admin_locked = False
+            self.instance.save()
+        else:
             self.cleaned_data["admin_locked"] = True
             self.instance.admin_locked = True
             self.instance.save()
             if self.cleaned_data["active"] == True:
                 if not self.current_user.is_staff and not self.current_user.is_superuser:
                     raise forms.ValidationError(
-                        f"rule is admin locked due to hige number of validations {count}, please contact admin or fix rule\n all changed of an admin locked rull must be approved by admin")
-        else:
-            self.cleaned_data["admin_locked"] = False
-            self.instance.admin_locked = False
-            self.instance.save()
+                        f"rule is admin locked due to high number of validations {count} > {max_allowed}, please contact admin or fix rule\n all changed of an admin locked rull must be approved by admin")
 
         return self.cleaned_data["pcap_legal_check"]
 
@@ -315,7 +340,7 @@ def validate_pcap_snort(pcaps, rule):
             raise forms.ValidationError(f"could not validate rule on {base}{pcap.pcap_file}: {e}", code=405)
     if failed:
         raise Exception("no rules was chosen")
-    return stdout
+    return 0
 
 
 
@@ -572,6 +597,10 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         atkgroup.widget.can_change_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_change_related"})[0].value == "True"
         atkgroup.widget.can_delete_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_delete_related"})[0].value == "True"
         atkgroup.widget.can_view_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_view_related"})[0].value == "True"
+        a = Setting.objects.get_or_create(**{"name": "MAX_SANITY_MATCH_ALLOWED"},defaults={"value": 1000})
+        a = Setting.objects.get_or_create(**{"name": "MIN_SANITY_MATCH_ALLOWED"}, defaults={"value": 0})
+        a = Setting.objects.get_or_create(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
+        a = Setting.objects.get_or_create(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
         return form
 
     @transaction.atomic
