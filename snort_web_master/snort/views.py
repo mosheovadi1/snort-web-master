@@ -4,6 +4,7 @@ from snort.models import SnortRule, SnortRuleViewArray
 import json
 import os
 from django.conf import settings
+from .parser import Parser
 # Create your views here.
 
 def get_rule_keys(request, rule_id=None):
@@ -25,7 +26,7 @@ def build_rule_keyword_to_rule(request, full_rule=""):
     if not full_rule:
         full_rule = json.loads(request.body.decode()).get("fule_rule")
     resppnse = {"data": []}
-    rule_parsed = suricataparser.parse_rule(full_rule.replace("sid:-;", ""))
+    rule_parsed = Parser(full_rule.replace("sid:-;", ""))
     build_keyword_dict(resppnse, rule_parsed)
     return JsonResponse(resppnse)
 
@@ -37,56 +38,60 @@ def get_current_user_name(request):
 def build_keyword_dict(resppnse, rule_parsed):
     if not rule_parsed:
         return
-    rule_keywordss = [build_keyword_item("action", rule_parsed.action),
-                      build_keyword_item("protocol", rule_parsed.header.split(" ")[0]),
-                      build_keyword_item("srcipallow",
-                                         "!" if rule_parsed.header.split(" ")[1].startswith("!") else "-----"),
-                      build_keyword_item("srcip", rule_parsed.header.split(" ")[1][1:] if rule_parsed.header.split(" ")[
-                          1].startswith("!") else rule_parsed.header.split(" ")[1], item_type="input"),
-                      build_keyword_item("srcportallow",
-                                         "!" if rule_parsed.header.split(" ")[2].startswith("!") else "-----"),
-                      build_keyword_item("srcport",
-                                         rule_parsed.header.split(" ")[2][1:] if rule_parsed.header.split(" ")[
-                                             2].startswith("!") else rule_parsed.header.split(" ")[2],
-                                         item_type="input"),
-                      build_keyword_item("direction", rule_parsed.header.split(" ")[3]),
-                      build_keyword_item("dstipallow",
-                                         "!" if rule_parsed.header.split(" ")[4].startswith("!") else "-----"),
-                      build_keyword_item("dstip", rule_parsed.header.split(" ")[4][1:] if rule_parsed.header.split(" ")[
-                          4].startswith("!") else rule_parsed.header.split(" ")[4], item_type="input"),
-                      build_keyword_item("dstportallow",
-                                         "!" if rule_parsed.header.split(" ")[5].startswith("!") else "-----"),
-                      build_keyword_item("dstport",
-                                         rule_parsed.header.split(" ")[5][1:] if rule_parsed.header.split(" ")[
-                                             5].startswith("!") else rule_parsed.header.split(" ")[5],
-                                         item_type="input"),
+    rule_keywordss = [build_keyword_item("action", rule_parsed.header["action"]),
+                      build_keyword_item("protocol", rule_parsed.header["proto"]),
+                      build_keyword_item("srcipallow", "!" if not rule_parsed.header["source"][0] else "-----"),
+                      build_keyword_item("srcip", rule_parsed.header["source"][1], item_type="input"),
+                      build_keyword_item("srcportallow", "!" if not rule_parsed.header["src_port"][0] else "-----"),
+                      build_keyword_item("srcport", rule_parsed.header["src_port"][1], item_type="input"),
+                      build_keyword_item("direction", rule_parsed.header["arrow"]),
+                      build_keyword_item("dstipallow", "!" if not rule_parsed.header["destination"][0] else "-----"),
+                      build_keyword_item("dstip", rule_parsed.header["destination"][1], item_type="input"),
+                      build_keyword_item("dstportallow","!" if not rule_parsed.header["dst_port"][0] else "-----"),
+                      build_keyword_item("dstport",rule_parsed.header["dst_port"][1], item_type="input"),
                       ]
     i = 0
     op_num = 0
-    for op in rule_parsed.options:
-        if op.name in ["msg", "sid"]:
-            resppnse[op.name] = op.value
+    for index, op in rule_parsed.options.items():
+        if op[0] == "tag":
+            if op[1] == ["session","10","packets"]:
+                continue
+        if op[0] in ["msg", "sid"]:
+            resppnse[op[0]] = op[1]
             i += 1
             continue
-        if op.name == "metadata":
-            for item in op.value.data:
+        if op[0] == "metadata":
+            for item in op[1]:
                 for meta_value in ["group ", "name ", "treatment ", "document ", "description "]:
                     if item.strip("'").strip().startswith(meta_value):
-                        resppnse["metadata_" + meta_value.strip()] = item.replace(meta_value, "").strip("'").strip()
+                        resppnse["metadata_" + meta_value.strip()] = item.replace(meta_value, "").strip('"').strip()
+                        break
             continue
-        rule_keywordss.append(build_keyword_item("keyword_selection" + str(op_num), op.name, x=op_num, y=0))
+        rule_keywordss.append(build_keyword_item("keyword_selection" + str(op_num), op[0], x=op_num, y=0))
 
-        if op.value:
-            if op.value.startswith("!"):
+        if len(op) > 1:
+            i=0
+            if isinstance(op[1], str):
+                op = (op[0], [op[1]])
+            for value in op[1]:
+                name = f"keyword_selection{str(op_num)}"
+                if i > 0:
+                    name = f"keyword{op_num}-{i-1}"
+                    rule_keywordss.append(build_keyword_item(name, value.split(":")[0].strip().strip('"').strip("'"), x=op_num, y=i-1))
+                    value = value.split(":")[1]
+                    i += 1
+                if value.strip().startswith("!"):
+                    rule_keywordss.append(
+                        build_keyword_item(f"keyword{str(op_num)}" + "-not", "!", x=op_num, y=0,
+                                           item_type="input"))
+                    value = op.strip().value[1:]
+
                 rule_keywordss.append(
-                    build_keyword_item(f"keyword{str(op_num)}" + "-not", "!", x=op_num, y=0,
+                    build_keyword_item(name + "-data", value.strip().strip('"').strip("'"), x=op_num, y=i,
                                        item_type="input"))
-                op.value = op.value[1:]
-            rule_keywordss.append(
-                build_keyword_item(f"keyword_selection{str(op_num)}" + "-data", op.value.strip('"').strip("'"), x=op_num, y=0,
-                                   item_type="input"))
+                i += 1
         op_num += 1
-        i += 1
+
     for rule_key in rule_keywordss:
         resppnse["data"].append(
             {"htmlId": rule_key["htmlId"], "value": rule_key["value"], "typeOfItem": rule_key["typeOfItem"],

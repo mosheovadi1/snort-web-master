@@ -51,6 +51,7 @@
   content = "";
   current_content = "";
   prev = null;
+  let substringsArray = ["depth", "offset", "distance", "within", "fast_pattern", "fast_pattern_offset", "fast_pattern_length", "nocase","relative","established", "count", "seconds"]
   for (let elem of document.getElementById("ruleform").childNodes) {
         if (elem.nodeType === 3||elem.tagName === "BR" ||elem.tagName === "IMG") // text node
         {
@@ -58,60 +59,38 @@
         }
         if (elem.tagName === "SELECT") // inner node
         {
-            if (prev !== null){
-            if (prev.tagName === "SELECT"){
-            content = content + ';';
-            }
-            }
+            let sep = "";
             if (elem.value === "-----"){
                 continue;
             }
-            if (content.endsWith(":;")){
-                    content = content.replaceAll(":;", ";")
-                }
-            if (content.endsWith(";;")){
-                content = content.replaceAll(";;", ";")
+            else if (substringsArray.some(v => elem.value === v)){
+                sep = ", ";
             }
-            content = content + elem.options[elem.selectedIndex].text;
-            if (content.endsWith(";!")){
-                content = content.replaceAll(";!", ": !")
+            else if (content == ""){}
+            else if (elem.value == "!"){}
+            else {
+                sep = "; ";
             }
-            if (content.endsWith(";;")){
-                content = content.replaceAll(";;", ";")
-            }
-            if (!(content.endsWith(";")) && (content !== current_content)){
-                content = content + ";"
-                current_content = content;
-            }
+
+            content = content + sep + elem.options[elem.selectedIndex].text;
+            current_content = content;
         }
-        if (elem.tagName === "INPUT") // inner node
+        else if (elem.tagName === "INPUT") // inner node
         {
             if (elem.value === "-----"){
             continue;
             }
-            if (content.endsWith(":;")){
-                    content = content.replaceAll(":;", ";")
-                }
-            if (content.endsWith(";;")){
-                content = content.replaceAll(";;", ";")
-            }
-            if (elem.id.startsWith("keyword_selection") && elem.id.endsWith("data") && content.endsWith("!;"))
+            if (elem.id.startsWith("keyword_selection") && elem.id.endsWith("data") && content.endsWith("!"))
             {
-                content = content.substring(0, content.length-1) + "'" +elem.value +"';";
+                content = content.substring(0, content.length-1) + ': !"' +elem.value + '"';
             }
             else if (elem.id.startsWith("keyword_selection") && elem.id.endsWith("data")){
-                 content = content.substring(0, content.length-1) + ": '" +elem.value +"';";
+                 content = content + ': "' +elem.value +'"';
            }
            else{
-               content = content.substring(0, content.length-1) + ':' +elem.value +';';
+               content = content + ': ' +elem.value +'';
            }
-            if (content.endsWith(";;")){
-                content = content.replaceAll(";;", ";")
-            }
-            if (!(content.endsWith(";")) && (content !== current_content)){
-                content = content + ";"
-                current_content = content;
-            }
+            current_content = content;
         }
         prev = elem;
     }
@@ -124,10 +103,10 @@
   group = "";
   }
 
-    id_content.value = id_content.textContent=action + " " + protocol + " " + srcipallow + srcip +" " +srcportallow+
-    srcport + " " + direction + " " + dstipallow + dstip + " " + dstportallow + dstport
-     + "(msg:" + group + " " + name+ ";" + content+ "sid:" +sigid +"; metadata: employee '"+
-     user_name + "', group '" + group + "', name '" + name + "', treatment '" + id_treatment +
-      "', keywords 'None', date '"+date_now+"', document '" + id_document + "',description '"+id_description+"'; "+id_tag+")";
+    id_content.value = id_content.textContent=action + ' ' + protocol + ' ' + srcipallow + srcip +' ' +srcportallow+
+    srcport + ' ' + direction + ' ' + dstipallow + dstip + ' ' + dstportallow + dstport
+     + '(msg:' + group + ' ' + name+ ';' + content+ '; sid:' +sigid +'; metadata: employee "'+
+     user_name + '", group "' + group + '", name "' + name + '", treatment "' + id_treatment +
+      '", keywords "None", date "'+date_now+'", document "' + id_document + '",description "'+id_description+'"; '+id_tag+')';
 };
 </script>

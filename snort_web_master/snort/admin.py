@@ -291,6 +291,7 @@ def validate_pcap_snort(pcaps, rule):
         rule_file.write(rule.content)
     failed = True
     for pcap in pcaps:
+        failed = False
         try:
             base = "/app/"
             if os.name =="nt":

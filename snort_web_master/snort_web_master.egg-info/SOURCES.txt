@@ -11,6 +11,7 @@ data/migrate sqllite to postgresql
 data/my-snort-rule.tmp
 data/requirements.txt
 data/snortFile
+data/admin/0004_keyword_delete_keywords.py
 data/admin/image/images.png
 data/nginx/nginx
 data/nginx/nginx.conf
@@ -37,7 +38,8 @@ snort_web_master/settings/views.py
 snort_web_master/settings/migrations/0001_initial.py
 snort_web_master/settings/migrations/0002_remove_keywords_type_keywords_description_and_more.py
 snort_web_master/settings/migrations/0003_keywords_avalable.py
-snort_web_master/settings/migrations/0004_remove_keywords_negation.py
+snort_web_master/settings/migrations/0004_keyword_delete_keywords.py
+snort_web_master/settings/migrations/0005_remove_keyword_negation_alter_keyword_description_and_more.py
 snort_web_master/settings/migrations/__init__.py
 snort_web_master/snort/__init__.py
 snort_web_master/snort/admin.py
@@ -53,6 +55,7 @@ snort_web_master/snort/migrations/0003_snortruleviewarray_htmlid_and_more.py
 snort_web_master/snort/migrations/0004_snortrule_deleted.py
 snort_web_master/snort/migrations/0005_remove_snortrule_template_snortrule_is_template.py
 snort_web_master/snort/migrations/0006_rename_main_ref_snortrule_document_and_more.py
+snort_web_master/snort/migrations/0007_snortrule_tag.py
 snort_web_master/snort/migrations/__init__.py
 snort_web_master/snort_web_master/__init__.py
 snort_web_master/snort_web_master/asgi.py

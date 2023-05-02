@@ -548,7 +548,7 @@ function set_value(value, field){
     var b = document.getElementById(field).onblur
     document.getElementById(field).onchange = undefined
     document.getElementById(field).onblur = undefined
-    document.getElementById(field).value = value.trim("'")
+    document.getElementById(field).value = value.trim('"')
     document.getElementById(field).onchange = c
     document.getElementById(field).onblur = b
 }
@@ -560,7 +560,7 @@ function content_change(){
     {
         var res_data_post = data
         for (const els of data.data){
-            selectElementManual(els.htmlId, els.value.trim("'"), els.typeOfItem, els.locationX, els.locationY);
+            selectElementManual(els.htmlId, els.value.trim('"'), els.typeOfItem, els.locationX, els.locationY);
         };
         if (data.metadata_description !== undefined){
             set_value(data.metadata_description,"id_description")
@@ -618,22 +618,22 @@ function get_clone_rule(){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_description").value = sessionStorage.getItem("snort_description").trim("'").trim("'");
+    document.getElementById("id_description").value = sessionStorage.getItem("snort_description").trim('"').trim('"');
     while (document.getElementById("id_name")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_name").value = sessionStorage.getItem("snort_name").trim("'").trim("'");
+    document.getElementById("id_name").value = sessionStorage.getItem("snort_name").trim('"').trim('"');
     while (document.getElementById("id_treatment")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_treatment").value = sessionStorage.getItem("snort_treatment").trim("'").trim("'");
+    document.getElementById("id_treatment").value = sessionStorage.getItem("snort_treatment").trim('"').trim('"');
     while (document.getElementById("id_document")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_document").value = sessionStorage.getItem("snort_document").trim("'").trim("'");
+    document.getElementById("id_document").value = sessionStorage.getItem("snort_document").trim('"').trim('"');
 
     sessionStorage.removeItem("snort_content");
     sessionStorage.removeItem("snort_name");
