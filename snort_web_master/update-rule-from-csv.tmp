@@ -1,0 +1,1 @@
+alert TCP any any -> any any(msg:"" update rule from csv;content: "234234"; sid:17; metadata: employee "snort-master", group "", name "update rule from csv", treatment "", keywords "None", date "02-05-2023 17:53:35", document "",description "345345345";  tag:session,packets 10;)

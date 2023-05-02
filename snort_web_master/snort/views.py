@@ -54,17 +54,22 @@ def build_keyword_dict(resppnse, rule_parsed):
     op_num = 0
     for index, op in rule_parsed.options.items():
         if op[0] == "tag":
-            if op[1] == ["session","packets 10"]:
+            if op[1] == ["session", "packets 10"]:
+                continue
+            if op[1] == ["session","10", "packets"]:
                 continue
         if op[0] in ["msg", "sid"]:
-            resppnse[op[0]] = op[1]
+            if isinstance(op[1], list):
+                resppnse[op[0]] = "".join(op[1]).strip('"').strip('"').strip()
+            else:
+                resppnse[op[0]] = op[1].strip('"').strip()
             i += 1
             continue
         if op[0] == "metadata":
             for item in op[1]:
                 for meta_value in ["group ", "name ", "treatment ", "document ", "description "]:
                     if item.strip("'").strip().startswith(meta_value):
-                        resppnse["metadata_" + meta_value.strip()] = item.replace(meta_value, "").strip('"').strip()
+                        resppnse["metadata_" + meta_value.strip()] = item.replace(meta_value, "").strip().strip('"')
                         break
             continue
         rule_keywordss.append(build_keyword_item("keyword_selection" + str(op_num), op[0], x=op_num, y=0))

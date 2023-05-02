@@ -7,6 +7,8 @@ from django.contrib import messages
 import re
 from import_export.admin import ImportExportModelAdmin
 from django import forms
+
+import pcaps.models
 from .models import SnortRule, SnortRuleViewArray, save_rule_to_s3, delete_rule_from_s3
 from .snort_templates import types_list
 from .parser import Parser
@@ -92,6 +94,19 @@ class SnortRuleAdminForm(forms.ModelForm):
                     pass
             else:
                 raise Exception("no content; please add at least one keyword")
+            if os.name != "nt":
+                cur_rule = SnortRule()
+                cur_rule.content = self.data.get("content")
+                cur_rule.location = self.data.get("location")
+                cur_rule.group = self.instance.group
+                cur_rule.id = self.data.get("id")
+                cur_rule.treatment = self.data.get("treatment")
+                cur_rule.name = self.data.get("name")
+                cur_rule.type = self.data.get("type")
+                cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
+                cur_rule.document = self.data.get("document")
+                pacps = [pcaps.models.Pcap(pcap_file="pacp_repo/http.cap")]
+                validate_pcap_snort(pacps, cur_rule)
         except Exception as e:
             raise forms.ValidationError(e)
 
@@ -150,7 +165,19 @@ class SnortRuleAdminForm(forms.ModelForm):
         count = validate_pcap_snort(self.cleaned_data.get("pcap_sanity_check"), cur_rule)
         print(f"clean_pcap_sanity_check: {min_allowed} <= int({count}) <= {max_allowed}")
         if min_allowed <= count <= max_allowed:
+            self.cleaned_data["admin_locked"] = False
+            self.instance.admin_locked = False
+            self.instance.save()
             return self.cleaned_data["pcap_sanity_check"]
+        elif Setting.objects.get(**{"name": "FORCE_SANITY_CHECK"}).value == "True":
+            self.cleaned_data["admin_locked"] = True
+            self.instance.admin_locked = True
+            self.instance.save()
+            if self.cleaned_data["active"] == True:
+                if not self.current_user.is_staff and not self.current_user.is_superuser:
+                    raise forms.ValidationError(
+                        f"rule is admin locked due to high number of validations {count} > {max_allowed}, please contact admin or fix rule\n all changed of an admin locked rull must be approved by admin")
+
         return self.cleaned_data["pcap_sanity_check"]
 
     # only admin can activate admin locked rule
@@ -329,7 +356,7 @@ def validate_pcap_snort(pcaps, rule):
                 raise Exception(f"cant find file {base}{pcap.pcap_file}")
             stdout, stderr = subprocess.Popen(
                 ["/home/snorty/snort3/bin/snort", "-R", rule.location + ".tmp", "-r", f"{base}{pcap.pcap_file}", "-A",
-                 "fast"], stdout=subprocess.PIPE,
+                 "fast", "-c", "/home/snorty/snort3/etc/snort/snort.lua"], stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE).communicate()
             if stdout and not stderr:
                 if b"total_alerts: " in stdout:
