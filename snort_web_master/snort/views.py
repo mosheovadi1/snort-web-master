@@ -84,7 +84,7 @@ def build_keyword_dict(resppnse, rule_parsed):
                     rule_keywordss.append(
                         build_keyword_item(f"keyword{str(op_num)}" + "-not", "!", x=op_num, y=0,
                                            item_type="input"))
-                    value = op.strip().value[1:]
+                    value = value.strip().value[1:]
 
                 rule_keywordss.append(
                     build_keyword_item(name + "-data", value.strip().strip('"').strip("'"), x=op_num, y=i,
