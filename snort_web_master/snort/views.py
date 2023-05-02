@@ -54,7 +54,7 @@ def build_keyword_dict(resppnse, rule_parsed):
     op_num = 0
     for index, op in rule_parsed.options.items():
         if op[0] == "tag":
-            if op[1] == ["session","10","packets"]:
+            if op[1] == ["session","packets 10"]:
                 continue
         if op[0] in ["msg", "sid"]:
             resppnse[op[0]] = op[1]
