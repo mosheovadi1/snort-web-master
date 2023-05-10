@@ -552,8 +552,12 @@ function set_value(value, field){
     document.getElementById(field).onchange = c
     document.getElementById(field).onblur = b
 }
-
+var first_load = true;
 function content_change(){
+    if (first_load){
+    set_up();
+    first_load = false;
+    }
    var id_content = document.getElementById("id_content");
     postData("/build_rule/keyword_to_rule", {"fule_rule": id_content.value})
     .then((data) =>

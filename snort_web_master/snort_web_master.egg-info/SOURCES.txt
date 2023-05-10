@@ -7,6 +7,7 @@ data/db.sqlite3
 data/dicts.py
 data/dockercompose
 data/favicon.ico
+data/http.cap
 data/migrate sqllite to postgresql
 data/my-snort-rule.tmp
 data/requirements.txt

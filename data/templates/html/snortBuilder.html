@@ -552,8 +552,12 @@ function set_value(value, field){
     document.getElementById(field).onchange = c
     document.getElementById(field).onblur = b
 }
-
+var first_load = true;
 function content_change(){
+    if (first_load){
+    set_up();
+    first_load = false;
+    }
    var id_content = document.getElementById("id_content");
     postData("/build_rule/keyword_to_rule", {"fule_rule": id_content.value})
     .then((data) =>
@@ -618,22 +622,22 @@ function get_clone_rule(){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_description").value = sessionStorage.getItem("snort_description").trim('"').trim('"');
+    document.getElementById("id_description").value = sessionStorage.getItem("snort_description").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
     while (document.getElementById("id_name")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_name").value = sessionStorage.getItem("snort_name").trim('"').trim('"');
+    document.getElementById("id_name").value = sessionStorage.getItem("snort_name").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
     while (document.getElementById("id_treatment")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_treatment").value = sessionStorage.getItem("snort_treatment").trim('"').trim('"');
+    document.getElementById("id_treatment").value = sessionStorage.getItem("snort_treatment").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
     while (document.getElementById("id_document")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
     }
-    document.getElementById("id_document").value = sessionStorage.getItem("snort_document").trim('"').trim('"');
+    document.getElementById("id_document").value = sessionStorage.getItem("snort_document").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
 
     sessionStorage.removeItem("snort_content");
     sessionStorage.removeItem("snort_name");

@@ -26,6 +26,8 @@ def build_rule_keyword_to_rule(request, full_rule=""):
     if not full_rule:
         full_rule = json.loads(request.body.decode()).get("fule_rule")
     resppnse = {"data": []}
+    if not full_rule:
+        return JsonResponse(resppnse)
     rule_parsed = Parser(full_rule.replace("sid:-;", ""))
     build_keyword_dict(resppnse, rule_parsed)
     return JsonResponse(resppnse)
@@ -82,8 +84,14 @@ def build_keyword_dict(resppnse, rule_parsed):
                 name = f"keyword_selection{str(op_num)}"
                 if i > 0:
                     name = f"keyword{op_num}-{i-1}"
-                    rule_keywordss.append(build_keyword_item(name, value.split(":")[0].strip().strip('"').strip("'"), x=op_num, y=i-1))
-                    value = value.split(":")[1]
+                    if ":" in value:
+                        rule_keywordss.append(build_keyword_item(name, value.split(":")[0].strip().strip('"').strip("'"), x=op_num, y=i-1))
+                        value = value.split(":")[1]
+                    else:
+                        rule_keywordss.append(
+                            build_keyword_item(name, value.strip().split(" ")[0].strip().strip('"').strip("'"), x=op_num,
+                                               y=i - 1))
+                        value = value.split(" ")[-1]
                     i += 1
                 if value.strip().startswith("!"):
                     rule_keywordss.append(

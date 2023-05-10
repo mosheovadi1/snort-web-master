@@ -88,7 +88,7 @@
                  content = content + ': "' +elem.value +'"';
            }
            else{
-               content = content + ': ' +elem.value +'';
+               content = content + ' ' +elem.value +'';
            }
             current_content = content;
         }
@@ -105,7 +105,7 @@
 
     id_content.value = id_content.textContent=action + ' ' + protocol + ' ' + srcipallow + srcip +' ' +srcportallow+
     srcport + ' ' + direction + ' ' + dstipallow + dstip + ' ' + dstportallow + dstport
-     + '(msg:"' + group + '" ' + name+ ';' + content+ '; sid:' +sigid +'; metadata: employee "'+
+     + '(msg:"' + group + ' ' + name+ '";' + content+ '; sid:' +sigid +'; metadata: employee "'+
      user_name + '", group "' + group + '", name "' + name + '", treatment "' + id_treatment +
       '", keywords "None", date "'+date_now+'", document "' + id_document + '",description "'+id_description+'"; '+id_tag+')';
 };
