@@ -56,6 +56,31 @@ class Parser(object):
             raise ValueError(msg)
 
     @staticmethod
+    def services(service: str) -> str:
+        services = {
+            "ftp",
+            "http",
+            "imap",
+            "pop3",
+            "sip",
+            "smtp",
+            "ssh",
+            "dce_http_server",
+            "dce_http_proxy",
+            "dnp3",
+            "netflow",
+            "http2",
+            "telnet",
+            "rpc",
+            "modbus"
+        }
+
+        if service.lower() in services:
+            return service
+        else:
+            msg = "Unsupported Service %s " % service
+            raise ValueError(msg)
+    @staticmethod
     def proto(proto: str) -> str:
         protos = {
             "tcp",
@@ -359,51 +384,56 @@ class Parser(object):
         header = list(filter(None, header))
         header_dict = collections.OrderedDict()
         size = len(header)
-        if not size == 7 and not size == 1:
+        if not size == 7 and not size == 1 and not size == 2:
             msg = "Snort rule header is malformed %s" % header
             raise ValueError(msg)
 
         for item in header:
-                if "action" not in header_dict:
-                    action = self.actions(item)
-                    header_dict["action"] = action
-                    continue
+            if "action" not in header_dict:
+                action = self.actions(item)
+                header_dict["action"] = action
+                continue
 
-                if "proto" not in header_dict:
+            if "proto" not in header_dict:
+                try:
+                    proto = self.proto(item)
+                    header_dict["proto"] = proto
+                    continue
+                except Exception as perror:
                     try:
-                        proto = self.proto(item)
-                        header_dict["proto"] = proto
+                        service = self.services(item)
+                        header_dict["service"] = service
                         continue
                     except Exception as perror:
                         raise ValueError(perror)
 
-                if "source" not in header_dict:
-                    try:
-                        src_ip = self.ip(item)
-                        header_dict["source"] = src_ip
-                        continue
-                    except Exception as serror:
-                        raise ValueError(serror)
-
-                if "src_port" not in header_dict:
-                    src_port = self.port(item)
-                    header_dict["src_port"] = src_port
+            if "source" not in header_dict:
+                try:
+                    src_ip = self.ip(item)
+                    header_dict["source"] = src_ip
                     continue
+                except Exception as serror:
+                    raise ValueError(serror)
 
-                if "arrow" not in header_dict:
-                    dst = self.destination(item)
-                    header_dict["arrow"] = dst
-                    continue
+            if "src_port" not in header_dict:
+                src_port = self.port(item)
+                header_dict["src_port"] = src_port
+                continue
 
-                if "destination" not in header_dict:
-                    dst_ip = self.ip(item)
-                    header_dict["destination"] = dst_ip
-                    continue
+            if "arrow" not in header_dict:
+                dst = self.destination(item)
+                header_dict["arrow"] = dst
+                continue
 
-                if "dst_port" not in header_dict:
-                    dst_port = self.port(item)
-                    header_dict["dst_port"] = dst_port
-                    continue
+            if "destination" not in header_dict:
+                dst_ip = self.ip(item)
+                header_dict["destination"] = dst_ip
+                continue
+
+            if "dst_port" not in header_dict:
+                dst_port = self.port(item)
+                header_dict["dst_port"] = dst_port
+                continue
 
         return header_dict
 
@@ -555,7 +585,11 @@ class SerializeRule(object):
             if isinstance(item, list):
                 return self.__list_serializer(_bool, item)
             else:
-                return item
+                if _bool:
+                    serialised = "{}".format(item)
+                if not _bool:
+                    serialised = "!{}".format(item)
+                return serialised
 
     def serialize_header(self, header: Dict = None) -> str:
         serialised = str()
@@ -579,7 +613,7 @@ class SerializeRule(object):
             options_list.append(option_value)
 
         _options = '; '.join(str(e) for e in options_list)
-        serialized_options = '({})'.format(_options)
+        serialized_options = '({};)'.format(_options)
         return serialized_options
 
     def serialize_rule(self):
@@ -588,7 +622,9 @@ class SerializeRule(object):
 
 if __name__ == '__main__':
     try:
-        rule = Parser("alert tcp 192.168.0.1 any -> $HOME_NET 21 (msg:”FTP connection attempt”; sid:1000002; rev:1;)")
+        # rule = Parser("alert tcp 192.168.0.1 any -> $HOME_NET 21 (msg:”FTP connection attempt”; sid:1000002; rev:1;)")
+        # print(rule.rule + " is OK")
+        rule = Parser("alert http (msg:”FTP connection attempt”; sid:1000002; rev:1;)")
         print(rule.rule + " is OK")
     except Exception as e:
         print(e)

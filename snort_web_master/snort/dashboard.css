@@ -1,0 +1,148 @@
+/* DASHBOARD */
+
+.dashboard .module table th {
+    width: 100%;
+}
+
+.dashboard .module table td {
+    white-space: nowrap;
+}
+
+.dashboard .module table td a {
+    display: block;
+    padding-right: .6em;
+}
+
+/* RECENT ACTIONS MODULE */
+
+.module ul.actionlist {
+    margin-left: 0;
+}
+
+ul.actionlist li {
+    list-style-type: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Customizing Django Admin with Modern Cyber Styling */
+
+/* Admin Header */
+#header {
+  background-color: #000;
+  border-bottom: 1px solid #0d6efd;
+}
+
+#header h1 a {
+  color: #0d6efd;
+  font-size: 24px;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+/* Admin Menu */
+#header .nav-sidebar {
+  background-color: #1a1a1a;
+  border-right: 1px solid #0d6efd;
+}
+
+#header .nav-sidebar a {
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 20px;
+  display: block;
+}
+
+#header .nav-sidebar a:hover {
+  background-color: #0d6efd;
+}
+
+/* Admin Content */
+#content {
+  background-color: #212121;
+  color: #fff;
+}
+
+/* Form Field */
+.form-row {
+  margin-bottom: 20px;
+}
+
+.form-row label {
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.form-row input[type="text"],
+.form-row input[type="password"],
+.form-row textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+  color: #fff;
+}
+
+.form-row select {
+  padding: 10px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  width: 100%;
+  background-color: #1a1a1a;
+  color: #fff;
+}
+
+/* Form Buttons */
+.submit-row input[type="submit"] {
+  padding: 10px 20px;
+  background-color: #0d6efd;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 4px;
+}
+
+.submit-row input[type="submit"]:hover {
+  background-color: #0b5ed7;
+}
+
+/* Error Messages */
+.errorlist {
+  color: #dc3545;
+  list-style: none;
+  padding-left: 0;
+}
+
+.errorlist li {
+  margin-bottom: 5px;
+}
+
+/* Pagination */
+.pagination {
+  margin-top: 20px;
+}
+
+.pagination .page-numbers {
+  padding: 8px 12px;
+  border: 1px solid #6c757d;
+  border-radius: 4px;
+  margin-right: 5px;
+  color: #fff;
+  text-decoration: none;
+  transition: background-color 0.3s ease-in-out;
+}
+
+.pagination .page-numbers.current {
+  background-color: #0d6efd;
+  color: #fff;
+  border: none;
+}
+
+.pagination .page-numbers:hover {
+  background-color: #0b5ed7;
+  color: #fff;
+  border: none;
+}

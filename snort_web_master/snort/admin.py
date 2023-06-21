@@ -5,6 +5,9 @@ import time
 from io import StringIO
 from django.contrib import messages
 import re
+import json
+
+from django.core.exceptions import ValidationError
 from import_export.admin import ImportExportModelAdmin
 from django import forms
 
@@ -17,7 +20,7 @@ from django.http.response import HttpResponse, HttpResponseRedirect
 from django.utils.html import mark_safe
 from django.db import transaction
 import suricataparser
-from snort.views import build_keyword_dict
+from snort.views import build_keyword_dict, build_rule_parse
 # Register your models here.
 from django.contrib import admin
 from django_object_actions import DjangoObjectActions
@@ -30,7 +33,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.conf import settings
 from datetime import datetime
-
+from django.core.serializers import serialize
 
 class StoreAdminForm(forms.ModelForm):
     ## add an extra field:
@@ -59,7 +62,7 @@ BASE_FIELDS = [
 FILTER_FIELDS = ("active", "is_template", "deleted", "admin_locked")
 ADVANCE_FILTER_FIELDS = tuple(i for i in BASE_FIELDS + ["content", ("pcap_sanity_check__name", "pcap_sanity_check_name"), ("pcap_legal_check__name", "pcap_legal_check_name"),("group_name", "group_name")])
 FIELDS = [
-    "id", "content", "active", "is_template", "deleted", "admin_locked", "tag",'name', "document", "treatment", "snort_builder", "description",
+    "id", "snort_builder", "active", "is_template", "deleted", "admin_locked",'name', "document", "treatment",  "description",
     "extra", "user", 'pcap_sanity_check', "pcap_legal_check"]
 SEARCH_FIELDS = tuple(i for i in BASE_FIELDS + ["content", "pcap_sanity_check__name", "pcap_legal_check__name", "group__name"])
 BASE_BUILDER_KEY = ("action", "protocol", "srcipallow", "srcip", "srcportallow", "srcport", "direction", "dstipallow",
@@ -88,12 +91,12 @@ class SnortRuleAdminForm(forms.ModelForm):
             options = parser.parse_options()
             for option in options:
                 try:
-                    if keyword.objects.get(name=options[option][0]):
+                    if options[option][1] != [""] and options[option][0] != "tag":
                         break
                 except:
                     pass
             else:
-                raise Exception("no content; please add at least one keyword")
+                raise forms.ValidationError("no content; please add at least one keyword, tag does not count as one.")
             if os.name != "nt":
                 cur_rule = SnortRule()
                 cur_rule.content = self.data.get("content")
@@ -247,10 +250,31 @@ class SnortRuleAdminForm(forms.ModelForm):
 
     @transaction.atomic
     def clean(self):
+        current_data = {}
+        for info, info_path in {"group": "group.name", "name": "name", "sigid": "id", "treatment": "treatment", "description":"description", "document":"document"}.items():
+            main = info_path.split(".")[0]
+            current_data[info] = self.cleaned_data.get(main, self.data.get(main, getattr(self.instance, main)))
+            for keypath in info_path.split(".")[1:]:
+                if current_data[info]:
+                    current_data[info] = getattr(current_data[info], keypath)
+                else:
+                    current_data[info] = ""
+
         if self.cleaned_data.get("content"):
             content = self.cleaned_data.get("content")
+            content = content[:-1] + f'msg:"{current_data["group"]}" "{current_data["name"]}"; sid:{current_data["sigid"]}; ' \
+                                     f'metadata: employee "{self.clean_user()}", group "{current_data["group"]}", ' \
+                                     f'name "{current_data["name"]}",treatment "{current_data["treatment"]}", keywords "None", ' \
+                                     f'date "{datetime.now().strftime("%d-%m-%Y %H:%M:%S")}", document "{current_data["document"]}",' \
+                                     f'description "{current_data["description"]}";)'
+
         elif self.data.get("content"):
             content = self.data.get("content")
+            content = content[:-1] + f'msg:"{current_data["group"]}" "{current_data["name"]}"; sid:{current_data["sigid"]}; ' \
+                                     f'metadata: employee "{self.clean_user()}", group "{current_data["group"]}", ' \
+                                     f'name "{current_data["name"]}",treatment "{current_data["treatment"]}", keywords "None", ' \
+                                     f'date "{datetime.now().strftime("%d-%m-%Y %H:%M:%S")}", document "{current_data["document"]}",' \
+                                     f'description "{current_data["description"]}";)'
         else:
             content = self.instance.content
         try:
@@ -264,61 +288,31 @@ class SnortRuleAdminForm(forms.ModelForm):
             self.add_error("user", e)
         try:
             self.clean_content()
+            if not self.current_user.is_superuser:
+                res = build_rule_parse("/build_rule_parse/", self.data["content"])
+                if json.loads(res.content).get("unparsed_data"):
+                    raise Exception("unparsed data exists, non admin cannot add unparsed data!")
         except Exception as e:
             if not self.errors:
-                self.add_error("content", e)
+                self.add_error(None, e)
 
-        rule_keys = []
+
         self.instance.deleted = False
         if not self.instance.pk and not self.errors:
             self.instance.save()
             # set sid in content for the new rule
-            if "sid:-;" in content:
-                self.cleaned_data["content"] = content.replace("sid:-;", f"sid:{self.instance.pk};")
+            if "sid:None;" in content:
+                self.cleaned_data["content"] = content.replace("sid:None;", f"sid:{self.instance.pk};")
                 if "content" not in self.changed_data:
                     self.changed_data.append("content")
         else:
             self.cleaned_data["content"] = content
+        self.instance.content = self.cleaned_data["content"]
         if not self.errors:
             SnortRuleViewArray.objects.filter(snortId=self.instance.id).delete()
-        for key, value in self.data.items():
-            if key in FIELDS + ['csrfmiddlewaretoken', "_save"]:
-                continue
-            item_type = "select"
-            location_x = 0
-            location_y = 0
-            if "keyword_selection" in key:
-                location_x = 0
-                try:
-                    index = key.index("-")
-                except:
-                    index = len(key)
-                location_y = int(key[len("keyword_selection"):index])
-            elif "keyword" in key:
-                try:
-                    index = key.index("-", key.index("-") + 1)
-                except:
-                    index = len(key)
-                if key[key.index("-") + 1:index] == "not":
-                    location_x = 0
-                    location_y = 0
-                else:
-                    location_x = int(key[key.index("-") + 1:index])
-                    location_y = int(key[len("keyword"):key.index("-")])
-            if "-data" in key or key in INPUT_TYPE:
-                item_type = "input"
-            rule_keys.append(SnortRuleViewArray(snortId=self.instance,
-                               typeOfItem=item_type,
-                               locationX=location_x,
-                               locationY=location_y,
-                               value=value,
-                               htmlId=key))
-        if not self.errors:
-            cache.set(self.instance.id, rule_keys)
-            for key in rule_keys:
-                key.save()
+            cache.set(self.instance.id, content)
         else:
-            cache.set(self.instance.id, rule_keys)
+            cache.set(self.instance.id, content)
             return
         if self.cleaned_data.get("active"):
             save_rule_to_s3(self.instance.id, self.instance.content)
@@ -549,12 +543,7 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
             return
         for rule in queryset:
             self.request = request
-            self.request.session["cloned_rule"] = {"cloned_rule": True,
-                           "rule_conetnt": rule.content.replace('"', "'"),
-                           "rule_description": rule.description,
-                           "rule_name": rule.name,
-                           "rule_treatment": rule.treatment,
-                           "rule_document": rule.document}
+            request.session["instance"] = serialize('json', [rule])
         request.path = "/admin/snort/snortrule/add/"
         request.path_info = "/admin/snort/snortrule/add/"
         request.method = "GET"
@@ -595,16 +584,17 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         return actions
 
     def snort_builder(self, obj):
-        set_rule = cache.get(obj.id)
-        if not set_rule:
-            set_rule = SnortRuleViewArray.objects.filter(snortId=obj.id)
-            cache.set(obj.id, set_rule)
-        else:
-            cache.set(obj.id, [])
+        # set_rule = cache.get(obj.id)
+        # if not set_rule:
+        #     set_rule = SnortRuleViewArray.objects.filter(snortId=obj.id)
+        #     cache.set(obj.id, set_rule)
+        # else:
+        #     cache.set(obj.id, [])
         context = {}
-        context["build_items"] = set_rule
-        context["actions"] = keyword.objects.filter(stage="action", available="True")
-        context["protocols"] = keyword.objects.filter(stage="protocol", available="True")
+        # todo handle caching of rule
+        # context["build_items"] = set_rule
+        # context["actions"] = keyword.objects.filter(stage="action", available="True")
+        # context["protocols"] = keyword.objects.filter(stage="protocol", available="True")
 
         tmp_context = copy.deepcopy(self.request.session.get("cloned_rule", {}))
         self.request.session["cloned_rule"] = {}
@@ -635,6 +625,9 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
 
     @transaction.atomic
     def clone_rule(self, request, obj: SnortRule):
+        # todo: clone rule does not work from main page
+        # todo: clone rule does not work from rule page
+        request.session["instance"] = serialize('json', [obj])
         return HttpResponseRedirect(f"/snort/snortrule/add/")
 
     clone_rule.label = "clone_rule"  # optional
@@ -642,9 +635,9 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
     def get_readonly_fields(self, request, obj=None):
         if obj and (obj.is_template or obj.admin_locked):
             read_only_fields = (
-            "id", "active", "user", "admin_locked", "snort_builder", "deleted", "rule_validation_section",)
+            "id", "snort_builder", "active", "user", "admin_locked", "deleted", "rule_validation_section",)
         else:
-            read_only_fields = ("id", "user", "admin_locked", "snort_builder", "deleted", "rule_validation_section")
+            read_only_fields = ("id", "snort_builder", "user", "admin_locked", "deleted", "rule_validation_section")
 
         return read_only_fields
 

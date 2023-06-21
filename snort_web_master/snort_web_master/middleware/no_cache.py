@@ -10,8 +10,9 @@ class NoCacheControl:
         # the view (and later middleware) are called.
 
         response = self.get_response(request)
-
-
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Expose-Headers"] = "csrftoken"
         # Code to be executed for each request/response after
         # the view is called.
 

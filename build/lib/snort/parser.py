@@ -305,7 +305,7 @@ class Parser(object):
             return header[0]
         else:
             msg = 'Error in syntax, check if rule'\
-                  'has been closed properly %s ' % self.rule
+                  ' has been closed properly %s ' % self.rule
             raise SyntaxError(msg)
 
     @staticmethod

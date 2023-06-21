@@ -32,5 +32,6 @@ class keyword(models.Model):
                                 help_text="what type of field is it, does it has sub fields")
     available = models.BooleanField(default=False,
                                 help_text="is it available in snort builder")
+    objects = models.Manager()
     def __unicode__(self):
         return self.name
