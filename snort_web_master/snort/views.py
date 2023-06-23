@@ -1,7 +1,12 @@
+import subprocess
 from collections import OrderedDict
 
 import suricataparser
+from django import forms
 from django.http.response import HttpResponse, JsonResponse
+
+import pcaps.models
+from pcaps.views import verify_legal_pcap
 from snort.models import SnortRule, SnortRuleViewArray
 import json
 import os
@@ -23,6 +28,7 @@ def get_rule_keys(request, rule_id=None):
     return JsonResponse(results)
 
 
+@csrf_exempt
 def get_rule(request, rule_id=None, cloned=None):
     if (request.session.get("instance")):
         r_value = HttpResponse(json.loads(request.session.pop("instance"))[0]["fields"]["content"])
@@ -298,11 +304,76 @@ def build_keyword_item(my_id, value, item_type="select", x=0, y=0):
 
 # build_rule_keyword_to_rule(None, SnortRule.objects.get(**{"id": 5}).content)
 def build_rule_rule_to_keywords(request, rule_keywords=None):
-    resppnse = {"fule_rule": ""}
+    response = {"fule_rule": ""}
     if not rule_keywords:
         rule_keywords = {}
-    return JsonResponse(resppnse)
+    return JsonResponse(response)
+
 
 def favico(request):
     image_data = open(os.path.join(settings.BASE_DIR, "favicon.ico"), "rb").read()
     return HttpResponse(image_data, content_type="image/png")
+
+
+@csrf_exempt
+def check_pcap(request):
+    response = {}
+    request_json = json.loads(request.body.decode())
+    try:
+        validate_pcap_snort([pcaps.models.Pcap.objects.get(name=p) for p in request_json["pcaps"]], SnortRule(content=request_json["rule"]), response)
+    except Exception:
+        pass
+    print(response)
+    print(json.dumps(response))
+    return JsonResponse(response)
+
+
+def validate_pcap_snort(pcaps, rule, out_dict=None):
+    if out_dict is None:
+        out_dict = {}
+    out_dict["stdout"] = []
+    out_dict["stderr"] = []
+    match_count = 0
+    stdout = b""
+
+    if not rule.location:
+        import re
+        rule.location = re.sub(r'[-\s]+', '-', re.sub(r'[^\w\s-]', '',
+                                                      rule.name)
+                               .strip()
+                               .lower())
+
+    with open(rule.location + ".tmp", "w") as rule_file:
+        rule_file.write(rule.content)
+    failed = True
+    for pcap in pcaps:
+        failed = False
+        try:
+            base = "/app/"
+            if os.name =="nt":
+                from django.conf import settings as s
+                base = str(s.BASE_DIR) + "/"
+
+            if not verify_legal_pcap(f"{base}{pcap.pcap_file}"):
+                raise Exception(f"illegal pcap file")
+            if not os.path.exists(f"{base}{pcap.pcap_file}"):
+                raise Exception(f"cant find file {base}{pcap.pcap_file}")
+            stdout, stderr = subprocess.Popen(
+                ["/home/snorty/snort3/bin/snort", "-R", rule.location + ".tmp", "-r", f"{base}{pcap.pcap_file}", "-A",
+                 "fast", "-c", "/home/snorty/snort3/etc/snort/snort.lua"], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE).communicate()
+            if stdout and not stderr:
+                out_dict["stdout"].append({str(pcap.pcap_file): stdout.decode().replace("pcap DAQ configured to read-file.", "").split("Finished rule args:")[-1]})
+                if b"total_alerts: " in stdout:
+                    match_count += int(stdout.split(b"total_alerts: ")[1].split(b"\n")[0])
+                else:
+                    match_count += 0
+            if stderr:
+                failed = True
+                out_dict["stderr"].append({str(pcap.pcap_file): stdout.decode().replace("pcap DAQ configured to read-file.", "").split("Finished rule args:")[-1]})
+        except Exception as e:
+            out_dict["stderr"].append(f"could not validate rule on {base}{pcap.pcap_file}: {e}")
+    # if failed and not match_count:
+    #     raise Exception(out_dict["stderr"] or "no rules was chosen")
+    print(match_count)
+    return match_count

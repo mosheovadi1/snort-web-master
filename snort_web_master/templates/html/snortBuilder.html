@@ -42,8 +42,6 @@ if (document.getElementsByClassName("objectaction-item")[0] !== undefined){
 }
 
 function get_clone_rule(){
-    id_content.value = sessionStorage.getItem("snort_content")
-    set_content_change()
     while (document.getElementById("id_description")== undefined){
         setTimeout(() => { get_clone_rule();}, 100)
         return;
@@ -71,13 +69,15 @@ function get_clone_rule(){
     sessionStorage.removeItem("snort_document");
 }
 
+setTimeout(() => {get_clone_rule();}, 10)
 setTimeout(() => {
     var field_user = document.getElementsByClassName("form-row field-user")[0];
     field_user.style.display = "None";
 
     if (document.getElementsByClassName("errorlist").length > 0){
         document.getElementsByClassName("errorlist")[0].parentElement.scrollIntoView()
-    };}, 200)
+    };
+    }, 200)
 
 </script>
 

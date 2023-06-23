@@ -19,7 +19,7 @@ from django.shortcuts import redirect
 from snort.views import get_rule, get_rule_keys, get,\
     build_rule_parse,build_rule_serialize, \
     build_rule_keyword_to_rule, build_rule_rule_to_keywords, \
-    favico,get_current_user_name
+    favico,get_current_user_name, check_pcap
 from django.conf import settings
 from django.conf.urls.static import static
 import django.contrib.auth.admin
@@ -28,6 +28,7 @@ admin.site.site_header = 'snort web master'
 app_name = "snort_web_master"
 urlpatterns = [
     path("favicon.ico", favico),
+    path("check_pcap/", check_pcap, name="check_pcap"),
     path("get_rule_update/<int:rule_id>/", get_rule, name="get_rule_update"),
     path("get_rule_update/<str:cloned>/", get_rule, name="get_rule_update"),
     path("get_rule_update//", get_rule, name="get_rule_update"),

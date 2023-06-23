@@ -1,1 +1,0 @@
-alert TCP !any any -> !any 500(msg:test_atk_group wtf;content: !"|00|"; sid:9; metadata: employee "snort-master", group "test_atk_group", name "wtf", treatment "", keywords "None", date "02-05-2023 14:46:50", document "",description "wtf";  tag:session,packets 10;)

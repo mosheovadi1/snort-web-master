@@ -2,6 +2,7 @@ from django.contrib import admin
 from django import forms
 import os
 from .models import Pcap, white_Pcap
+from .views import verify_legal_pcap
 
 
 class PcapAdminForm(forms.ModelForm):
@@ -63,17 +64,3 @@ class SnortRuleAdmin(admin.ModelAdmin):
     # form = SnortRuleAdminForm
 
 
-def verify_legal_pcap(filename):
-    import dpkt
-    counter = 0
-
-    for ts, pkt in dpkt.pcap.Reader(open(filename, 'br')):
-
-        counter += 1
-        eth = dpkt.ethernet.Ethernet(pkt)
-        if eth.type != dpkt.ethernet.ETH_TYPE_IP:
-            continue
-
-    if not counter:
-        return False
-    return True

@@ -22,7 +22,7 @@ from django_object_actions import DjangoObjectActions
 import subprocess
 from settings.models import Setting, keyword, attackGroup
 from django.shortcuts import render
-from pcaps.admin import verify_legal_pcap
+from pcaps.views import verify_legal_pcap
 from advanced_filters.admin import AdminAdvancedFiltersMixin
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile

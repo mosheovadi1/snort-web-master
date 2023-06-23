@@ -7,7 +7,6 @@ from django.contrib import messages
 import re
 import json
 
-from django.core.exceptions import ValidationError
 from import_export.admin import ImportExportModelAdmin
 from django import forms
 
@@ -20,14 +19,12 @@ from django.http.response import HttpResponse, HttpResponseRedirect
 from django.utils.html import mark_safe
 from django.db import transaction
 import suricataparser
-from snort.views import build_keyword_dict, build_rule_parse
+from snort.views import build_keyword_dict, build_rule_parse, validate_pcap_snort
 # Register your models here.
 from django.contrib import admin
 from django_object_actions import DjangoObjectActions
-import subprocess
-from settings.models import Setting, keyword, attackGroup
+from settings.models import Setting, attackGroup
 from django.shortcuts import render
-from pcaps.admin import verify_legal_pcap
 from advanced_filters.admin import AdminAdvancedFiltersMixin
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
@@ -323,52 +320,6 @@ class SnortRuleAdminForm(forms.ModelForm):
             # todo: make sure it is not on prod
 
 
-def validate_pcap_snort(pcaps, rule):
-    stdout = b""
-
-    if not rule.location:
-        import re
-        rule.location = re.sub(r'[-\s]+', '-', re.sub(r'[^\w\s-]', '',
-                                                      rule.name)
-                               .strip()
-                               .lower())
-
-    with open(rule.location + ".tmp", "w") as rule_file:
-        rule_file.write(rule.content)
-    failed = True
-    for pcap in pcaps:
-        failed = False
-        try:
-            base = "/app/"
-            if os.name =="nt":
-                from django.conf import settings as s
-                base = str(s.BASE_DIR) + "/"
-
-            if not verify_legal_pcap(f"{base}{pcap.pcap_file}"):
-                raise Exception(f"illegal pcap file")
-            if not os.path.exists(f"{base}{pcap.pcap_file}"):
-                raise Exception(f"cant find file {base}{pcap.pcap_file}")
-            stdout, stderr = subprocess.Popen(
-                ["/home/snorty/snort3/bin/snort", "-R", rule.location + ".tmp", "-r", f"{base}{pcap.pcap_file}", "-A",
-                 "fast", "-c", "/home/snorty/snort3/etc/snort/snort.lua"], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE).communicate()
-            if stdout and not stderr:
-                if b"total_alerts: " in stdout:
-                    return stdout.split(b"total_alerts: ")[1].split(b"\n")[0]
-                else:
-                    return 0
-            if stderr:
-                raise Exception(stderr)
-        except Exception as e:
-            raise forms.ValidationError(f"could not validate rule on {base}{pcap.pcap_file}: {e}", code=405)
-    if failed:
-        raise Exception("no rules was chosen")
-    return 0
-
-
-
-
-
 @admin.register(SnortRule)
 class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExportModelAdmin, admin.ModelAdmin):
     list_filter = FILTER_FIELDS  # simple list filters
@@ -441,10 +392,6 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                         except:
                             raise Exception("bad rule format")
                         build_keyword_dict(resppnse, rule_parsed)
-                        for item_data in resppnse["data"]:
-                            temp_id = snort_rule.id
-                            snort_rules_options_to_save[temp_id] = []
-                            snort_rules_options_to_save[temp_id].append(SnortRuleViewArray(**item_data))
                         for op in rule_parsed.options:
                             if op.name == "msg":
                                 if snort_rule.group:
@@ -518,10 +465,6 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                         save_rule_to_s3(rule.id, rule.content)
                     else:
                         delete_rule_from_s3(rule.id)
-                    SnortRuleViewArray.objects.filter(snortId=rule.id).delete()
-                    for attr in snort_rules_options_to_save[rule_id]:
-                        attr.snortId = rule
-                        attr.save()
                 return HttpResponseRedirect("/admin/snort/snortrule/")
             return HttpResponseRedirect("/admin/snort/snortrule/import/")
 
@@ -599,7 +542,6 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         tmp_context = copy.deepcopy(self.request.session.get("cloned_rule", {}))
         self.request.session["cloned_rule"] = {}
         tmp_context.update(context)
-
 
         snort_buider_section = render(self.request, "html/snortBuilder.html", tmp_context).content.decode("utf-8")
         full_rule_js = render(self.request, "html/full_rule.html")

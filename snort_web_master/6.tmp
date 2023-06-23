@@ -1,1 +1,0 @@
-alert TCP any any -> any any(msg: "6;content: !"|00|"; sid:28; metadata: employee "snort-master", group "", name ""6", treatment "", keywords "None", date "02-05-2023 14:18:54", document "",description "6";  tag:session,10,packets;)

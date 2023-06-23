@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='snort_web_master',
-    version='1.0.0.1',
+    version='1.0.0.2',
     license='MoCorp',
     readme="README.md",
     author="meir dahan",
@@ -23,7 +23,8 @@ setup(
           'suricataparser',
           'django-import-export',
           "psycopg2-binary==2.9.1",
-          "gunicorn==20.1.0"
+          "gunicorn==20.1.0",
+          "django-cors-headers"
       ],
 
 )
