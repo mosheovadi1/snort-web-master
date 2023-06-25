@@ -1,0 +1,1 @@
+alert file (content:"2"; tag:session,packets 10;)

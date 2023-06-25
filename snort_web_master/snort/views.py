@@ -1,3 +1,4 @@
+import random
 import subprocess
 from collections import OrderedDict
 
@@ -66,7 +67,7 @@ def build_rule_parse(request, full_rule=""):
     if not full_rule:
         return JsonResponse(resppnse)
     try:
-        rule_parsed = Parser(full_rule.replace("sid:-;", ""))
+        rule_parsed = Parser(full_rule.replace("sid:-;", ""), set([op.name for op in keyword.objects.filter(stage="service", available=True)]))
     except:
         print(full_rule.replace("sid:-;", ""))
         raise
@@ -318,21 +319,31 @@ def favico(request):
 @csrf_exempt
 def check_pcap(request):
     response = {}
+    response["stdout"] = []
+    response["stderr"] = []
     request_json = json.loads(request.body.decode())
     try:
         validate_pcap_snort([pcaps.models.Pcap.objects.get(name=p) for p in request_json["pcaps"]], SnortRule(content=request_json["rule"]), response)
+        if len(response["stdout"]) > 0:
+            response["stdout"].insert(0, "stdout:")
+            response["stdout"].insert(0, "")
+        if len(response["stderr"]) > 0:
+            response["stderr"].insert(0, "stderr")
     except Exception:
         pass
-    print(response)
     print(json.dumps(response))
+    try:
+        print(open("/var/log/snort/alert").read())
+    except Exception as e:
+        print(e)
     return JsonResponse(response)
 
 
 def validate_pcap_snort(pcaps, rule, out_dict=None):
     if out_dict is None:
         out_dict = {}
-    out_dict["stdout"] = []
-    out_dict["stderr"] = []
+        out_dict["stdout"] = []
+        out_dict["stderr"] = []
     match_count = 0
     stdout = b""
 
@@ -362,18 +373,27 @@ def validate_pcap_snort(pcaps, rule, out_dict=None):
                 ["/home/snorty/snort3/bin/snort", "-R", rule.location + ".tmp", "-r", f"{base}{pcap.pcap_file}", "-A",
                  "fast", "-c", "/home/snorty/snort3/etc/snort/snort.lua"], stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE).communicate()
-            if stdout and not stderr:
-                out_dict["stdout"].append({str(pcap.pcap_file): stdout.decode().replace("pcap DAQ configured to read-file.", "").split("Finished rule args:")[-1]})
-                if b"total_alerts: " in stdout:
-                    match_count += int(stdout.split(b"total_alerts: ")[1].split(b"\n")[0])
-                else:
-                    match_count += 0
+            if stdout:
+                stdout_data = stdout.decode()
+                if "Commencing packet processing" in stdout_data:
+                    match_index = stdout_data.index("Commencing packet processing")
+                    end_match_index = stdout_data.index("--------------------------------", match_index)
+                    out_dict["stdout"] += stdout_data[match_index:end_match_index].split("\n")
+                if "detection" in stdout_data:
+                    match_index = stdout_data.index("detection")
+                    end_match_index = stdout_data.index("--------------------------------", match_index)
+                    out_dict["stdout"] += stdout_data[match_index:end_match_index].split("\n")
+                if not stderr:
+                    if b"total_alerts: " in stdout:
+                        match_count += int(stdout.split(b"total_alerts: ")[1].split(b"\n")[0])
+                    else:
+                        match_count += 0
             if stderr:
                 failed = True
-                out_dict["stderr"].append({str(pcap.pcap_file): stdout.decode().replace("pcap DAQ configured to read-file.", "").split("Finished rule args:")[-1]})
+                out_dict["stderr"] += stderr.decode().split("\n")
         except Exception as e:
             out_dict["stderr"].append(f"could not validate rule on {base}{pcap.pcap_file}: {e}")
-    # if failed and not match_count:
-    #     raise Exception(out_dict["stderr"] or "no rules was chosen")
+    if failed and not match_count:
+        raise Exception(out_dict["stderr"] or "no rules was chosen")
     print(match_count)
     return match_count

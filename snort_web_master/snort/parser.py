@@ -18,10 +18,10 @@ class Parser(object):
     it will a raise ValueError.
     '''
 
-    def __init__(self, rule):
+    def __init__(self, rule, services):
         self.dicts = Dicts()
         self.rule = rule
-        self.header = self.parse_header()
+        self.header = self.parse_header(services)
         self.options = self.parse_options()
         self.validate_options(self.options)
         self.data = {"header": self.header, "options": self.options}
@@ -56,7 +56,7 @@ class Parser(object):
             raise ValueError(msg)
 
     @staticmethod
-    def services(service: str) -> str:
+    def services(service: str, services) -> str:
         services = {
             "ftp",
             "http",
@@ -73,7 +73,7 @@ class Parser(object):
             "telnet",
             "rpc",
             "modbus"
-        }
+        }.union(services)
 
         if service.lower() in services:
             return service
@@ -362,7 +362,7 @@ class Parser(object):
 
         return op_list
 
-    def parse_header(self):
+    def parse_header(self, services):
         """
         OrderedDict([('action', 'alert'), ('proto', 'tcp'), ('source', \
         (True, '$HOME_NET')), ('src_port', (True, 'any')), ('arrow', '->'), \
@@ -401,8 +401,8 @@ class Parser(object):
                     continue
                 except Exception as perror:
                     try:
-                        service = self.services(item)
-                        header_dict["service"] = service
+                        service = self.services(item, services)
+                        header_dict["proto"] = service
                         continue
                     except Exception as perror:
                         raise ValueError(perror)
