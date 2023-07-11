@@ -64,6 +64,7 @@ function get_clone_rule(){
     document.getElementById("id_document").value = sessionStorage.getItem("snort_document").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
 
     sessionStorage.removeItem("snort_content");
+    sessionStorage.removeItem("snort_description");
     sessionStorage.removeItem("snort_name");
     sessionStorage.removeItem("snort_treatment");
     sessionStorage.removeItem("snort_document");

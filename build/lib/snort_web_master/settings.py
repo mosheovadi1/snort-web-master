@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 import mimetypes
 
+import corsheaders.middleware
+
 mimetypes.add_type("text/javascript", ".js", True)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +30,14 @@ SECRET_KEY = os.environ.get("SECRET_KEY", 'django-insecure-6imn8m6=okyge)ghoygg&
 DEBUG = int(os.environ.get("DEBUG", default=1))
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split("") if os.environ.get("DJANGO_ALLOWED_HOSTS", "") else ["*"]
-
+CORS_ALLOWED_ORIGINS = ["http://127.0.0.1:3000",
+                        "http://localhost:3000",]
+CORS_ALLOWED_HEADERS = ["x-CSRF-TOKEN"]
+# CORS_ALLOWED_ORIGIN_REGEXES = [".*"]
+CSRF_TRUSTED_ORIGINS = ["http://*127.0.0.1:3000",
+                        "http://*localhost:3000",]
+CORS_ORIGINS_ALLOW_ALL = True
+CORS_ALLOW_ALL_ORIGINS = True
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -38,6 +47,7 @@ CACHES = {
 # Application definition
 
 INSTALLED_APPS = [
+#     "corsheaders",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -57,12 +67,14 @@ IMPORT_EXPORT_USE_TRANSACTIONS = True
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+#     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "snort_web_master.middleware.no_cache.NoCacheControl",
+
 ]
 
 ROOT_URLCONF = 'snort_web_master.urls'

@@ -16,7 +16,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
-from snort.views import get_rule, get_rule_keys, build_rule_keyword_to_rule, build_rule_rule_to_keywords, favico,get_current_user_name
+from snort.views import get_rule, get_rule_keys, get,\
+    build_rule_parse,build_rule_serialize, \
+    build_rule_keyword_to_rule, build_rule_rule_to_keywords, \
+    favico,get_current_user_name, check_pcap
 from django.conf import settings
 from django.conf.urls.static import static
 import django.contrib.auth.admin
@@ -25,12 +28,19 @@ admin.site.site_header = 'snort web master'
 app_name = "snort_web_master"
 urlpatterns = [
     path("favicon.ico", favico),
+    path("check_pcap/", check_pcap, name="check_pcap"),
     path("get_rule_update/<int:rule_id>/", get_rule, name="get_rule_update"),
+    path("get_rule_update/<str:cloned>/", get_rule, name="get_rule_update"),
+    path("get_rule_update//", get_rule, name="get_rule_update"),
     path("get_rule_keywords/<int:rule_id>/", get_rule_keys,name="get_rule_keywords"),
     path('advanced_filters/', include("advanced_filters.urls"), name="advance_filter"),
     path("build_rule/keyword_to_rule", build_rule_keyword_to_rule,name="build_rule"),
     path("build_rule/rule_to_keywords", build_rule_rule_to_keywords,name="build_keyword"),
+    path("build_rule_parse/", build_rule_parse, name="build_rule_parse"),
+    path("build_rule_serialize/", build_rule_serialize, name="build_rule_serialize"),
     path("current_user_name", get_current_user_name, name="get_current_user_name"),
+    path("get/<str:stage>/", get, name="get"),
+    path("get/", get, name="get"),
     path('admin/', admin.site.urls, name="admin_main"),
     path('',  admin.site.urls, name="admin_main"),
 ]+ static("static/", document_root=settings.STATIC_ROOT) + static("/", document_root=settings.BASE_DIR)

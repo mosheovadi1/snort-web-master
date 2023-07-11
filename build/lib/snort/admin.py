@@ -5,8 +5,12 @@ import time
 from io import StringIO
 from django.contrib import messages
 import re
+import json
+
 from import_export.admin import ImportExportModelAdmin
 from django import forms
+
+import pcaps.models
 from .models import SnortRule, SnortRuleViewArray, save_rule_to_s3, delete_rule_from_s3
 from .snort_templates import types_list
 from .parser import Parser
@@ -15,20 +19,18 @@ from django.http.response import HttpResponse, HttpResponseRedirect
 from django.utils.html import mark_safe
 from django.db import transaction
 import suricataparser
-from snort.views import build_keyword_dict
+from snort.views import build_keyword_dict, build_rule_parse, validate_pcap_snort
 # Register your models here.
 from django.contrib import admin
 from django_object_actions import DjangoObjectActions
-import subprocess
-from settings.models import Setting, keyword, attackGroup
+from settings.models import Setting, attackGroup, keyword
 from django.shortcuts import render
-from pcaps.views import verify_legal_pcap
 from advanced_filters.admin import AdminAdvancedFiltersMixin
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.conf import settings
 from datetime import datetime
-
+from django.core.serializers import serialize
 
 class StoreAdminForm(forms.ModelForm):
     ## add an extra field:
@@ -57,7 +59,7 @@ BASE_FIELDS = [
 FILTER_FIELDS = ("active", "is_template", "deleted", "admin_locked")
 ADVANCE_FILTER_FIELDS = tuple(i for i in BASE_FIELDS + ["content", ("pcap_sanity_check__name", "pcap_sanity_check_name"), ("pcap_legal_check__name", "pcap_legal_check_name"),("group_name", "group_name")])
 FIELDS = [
-    "id", "content", "active", "is_template", "deleted", "admin_locked", "tag",'name', "document", "treatment", "snort_builder", "description",
+    "id", "snort_builder", "active", "is_template", "deleted", "admin_locked",'name', "document", "treatment",  "description",
     "extra", "user", 'pcap_sanity_check', "pcap_legal_check"]
 SEARCH_FIELDS = tuple(i for i in BASE_FIELDS + ["content", "pcap_sanity_check__name", "pcap_legal_check__name", "group__name"])
 BASE_BUILDER_KEY = ("action", "protocol", "srcipallow", "srcip", "srcportallow", "srcport", "direction", "dstipallow",
@@ -86,12 +88,25 @@ class SnortRuleAdminForm(forms.ModelForm):
             options = parser.parse_options()
             for option in options:
                 try:
-                    if keyword.objects.get(name=options[option][0]):
+                    if options[option][1] != [""] and options[option][0] != "tag":
                         break
                 except:
                     pass
             else:
-                raise Exception("no content; please add at least one keyword")
+                raise forms.ValidationError("no content; please add at least one keyword, tag does not count as one.")
+            if os.name != "nt":
+                cur_rule = SnortRule()
+                cur_rule.content = self.data.get("content")
+                cur_rule.location = self.data.get("location")
+                cur_rule.group = self.instance.group
+                cur_rule.id = self.data.get("id")
+                cur_rule.treatment = self.data.get("treatment")
+                cur_rule.name = self.data.get("name")
+                cur_rule.type = self.data.get("type")
+                cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
+                cur_rule.document = self.data.get("document")
+                pacps = [pcaps.models.Pcap(pcap_file="pacp_repo/http.cap")]
+                validate_pcap_snort(pacps, cur_rule)
         except Exception as e:
             raise forms.ValidationError(e)
 
@@ -134,13 +149,36 @@ class SnortRuleAdminForm(forms.ModelForm):
         cur_rule.type = self.data.get("type")
         cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
         cur_rule.document = self.data.get("document")
-        max_allowed = Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"})
-        min_allowed = Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"})
+        min_allowed = 0
+        max_allowed = 0
+        try:
+            max_allowed = int(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(str(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"})) + " for MAX_SANITY_MATCH_ALLOWED is not a valid int")
+            return
+        try:
+            min_allowed = int(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(
+                    str(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"})) + " for MIN_SANITY_MATCH_ALLOWED is not a valid int")
+            return
         count = validate_pcap_snort(self.cleaned_data.get("pcap_sanity_check"), cur_rule)
-        print(f"{min_allowed} <= int({count}) < {max_allowed}")
-        if min_allowed < count < max_allowed:
+        print(f"clean_pcap_sanity_check: {min_allowed} <= int({count}) <= {max_allowed}")
+        if min_allowed <= count <= max_allowed:
+            self.cleaned_data["admin_locked"] = False
+            self.instance.admin_locked = False
+            self.instance.save()
             return self.cleaned_data["pcap_sanity_check"]
-        raise forms.ValidationError(f"failed sanity check count:{count} is not in range {min_allowed}-{max_allowed}")
+        elif Setting.objects.get(**{"name": "FORCE_SANITY_CHECK"}).value == "True":
+            self.cleaned_data["admin_locked"] = True
+            self.instance.admin_locked = True
+            self.instance.save()
+            if self.cleaned_data["active"] == True:
+                if not self.current_user.is_staff and not self.current_user.is_superuser:
+                    raise forms.ValidationError(
+                        f"rule is admin locked due to high number of validations {count} > {max_allowed}, please contact admin or fix rule\n all changed of an admin locked rull must be approved by admin")
+
+        return self.cleaned_data["pcap_sanity_check"]
 
     # only admin can activate admin locked rule
     def clean_pcap_legal_check(self):
@@ -165,11 +203,20 @@ class SnortRuleAdminForm(forms.ModelForm):
         cur_rule.type = self.data.get("type")
         cur_rule.user = getattr(self.current_user, self.current_user.USERNAME_FIELD)
         cur_rule.document = self.data.get("document")
-        max_allowed = Setting.objects.get_or_create(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
-        min_allowed = Setting.objects.get_or_create(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
+        try:
+            max_allowed = int(Setting.objects.get(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(str(Setting.objects.get(**{"name": "MAX_SANITY_MATCH_ALLOWED"})) + " for MAX_SANITY_MATCH_ALLOWED is not a valid int")
+            return
+        try:
+            min_allowed = int(Setting.objects.get(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}).value)
+        except:
+            forms.ValidationError(
+                    str(Setting.objects.get(**{"name": "MIN_SANITY_MATCH_ALLOWED"})) + " for MIN_SANITY_MATCH_ALLOWED is not a valid int")
+            return
         count = validate_pcap_snort(self.cleaned_data.get("pcap_legal_check"), cur_rule)
-        print(f"{min_allowed} <= int({count}) < {max_allowed}")
-        if min_allowed <= int(count) < max_allowed:
+        print(f"clean_pcap_legal_check: {min_allowed} <= int({count}) <= {max_allowed}")
+        if min_allowed <= int(count) <= max_allowed:
             self.cleaned_data["admin_locked"] = False
             self.instance.admin_locked = False
             self.instance.save()
@@ -200,10 +247,31 @@ class SnortRuleAdminForm(forms.ModelForm):
 
     @transaction.atomic
     def clean(self):
+        current_data = {}
+        for info, info_path in {"group": "group.name", "name": "name", "sigid": "id", "treatment": "treatment", "description":"description", "document":"document"}.items():
+            main = info_path.split(".")[0]
+            current_data[info] = self.cleaned_data.get(main, self.data.get(main, getattr(self.instance, main)))
+            for keypath in info_path.split(".")[1:]:
+                if current_data[info]:
+                    current_data[info] = getattr(current_data[info], keypath)
+                else:
+                    current_data[info] = ""
+
         if self.cleaned_data.get("content"):
             content = self.cleaned_data.get("content")
+            content = content[:-1] + f'msg:"{current_data["group"]}" "{current_data["name"]}"; sid:{current_data["sigid"]}; ' \
+                                     f'metadata: employee "{self.clean_user()}", group "{current_data["group"]}", ' \
+                                     f'name "{current_data["name"]}",treatment "{current_data["treatment"]}", keywords "None", ' \
+                                     f'date "{datetime.now().strftime("%d-%m-%Y %H:%M:%S")}", document "{current_data["document"]}",' \
+                                     f'description "{current_data["description"]}";)'
+
         elif self.data.get("content"):
             content = self.data.get("content")
+            content = content[:-1] + f'msg:"{current_data["group"]}" "{current_data["name"]}"; sid:{current_data["sigid"]}; ' \
+                                     f'metadata: employee "{self.clean_user()}", group "{current_data["group"]}", ' \
+                                     f'name "{current_data["name"]}",treatment "{current_data["treatment"]}", keywords "None", ' \
+                                     f'date "{datetime.now().strftime("%d-%m-%Y %H:%M:%S")}", document "{current_data["document"]}",' \
+                                     f'description "{current_data["description"]}";)'
         else:
             content = self.instance.content
         try:
@@ -217,61 +285,31 @@ class SnortRuleAdminForm(forms.ModelForm):
             self.add_error("user", e)
         try:
             self.clean_content()
+            if not self.current_user.is_superuser:
+                res = build_rule_parse("/build_rule_parse/", self.data["content"])
+                if json.loads(res.content).get("unparsed_data"):
+                    raise Exception("unparsed data exists, non admin cannot add unparsed data!")
         except Exception as e:
             if not self.errors:
-                self.add_error("content", e)
+                self.add_error(None, e)
 
-        rule_keys = []
+
         self.instance.deleted = False
         if not self.instance.pk and not self.errors:
             self.instance.save()
             # set sid in content for the new rule
-            if "sid:-;" in content:
-                self.cleaned_data["content"] = content.replace("sid:-;", f"sid:{self.instance.pk};")
+            if "sid:None;" in content:
+                self.cleaned_data["content"] = content.replace("sid:None;", f"sid:{self.instance.pk};")
                 if "content" not in self.changed_data:
                     self.changed_data.append("content")
         else:
             self.cleaned_data["content"] = content
+        self.instance.content = self.cleaned_data["content"]
         if not self.errors:
             SnortRuleViewArray.objects.filter(snortId=self.instance.id).delete()
-        for key, value in self.data.items():
-            if key in FIELDS + ['csrfmiddlewaretoken', "_save"]:
-                continue
-            item_type = "select"
-            location_x = 0
-            location_y = 0
-            if "keyword_selection" in key:
-                location_x = 0
-                try:
-                    index = key.index("-")
-                except:
-                    index = len(key)
-                location_y = int(key[len("keyword_selection"):index])
-            elif "keyword" in key:
-                try:
-                    index = key.index("-", key.index("-") + 1)
-                except:
-                    index = len(key)
-                if key[key.index("-") + 1:index] == "not":
-                    location_x = 0
-                    location_y = 0
-                else:
-                    location_x = int(key[key.index("-") + 1:index])
-                    location_y = int(key[len("keyword"):key.index("-")])
-            if "-data" in key or key in INPUT_TYPE:
-                item_type = "input"
-            rule_keys.append(SnortRuleViewArray(snortId=self.instance,
-                               typeOfItem=item_type,
-                               locationX=location_x,
-                               locationY=location_y,
-                               value=value,
-                               htmlId=key))
-        if not self.errors:
-            cache.set(self.instance.id, rule_keys)
-            for key in rule_keys:
-                key.save()
+            cache.set(self.instance.id, content)
         else:
-            cache.set(self.instance.id, rule_keys)
+            cache.set(self.instance.id, content)
             return
         if self.cleaned_data.get("active"):
             save_rule_to_s3(self.instance.id, self.instance.content)
@@ -280,49 +318,6 @@ class SnortRuleAdminForm(forms.ModelForm):
         else:
             delete_rule_from_s3(self.instance.id)
             # todo: make sure it is not on prod
-
-
-def validate_pcap_snort(pcaps, rule):
-    stdout = b""
-
-    if not rule.location:
-        import re
-        rule.location = re.sub(r'[-\s]+', '-', re.sub(r'[^\w\s-]', '',
-                                                      rule.name)
-                               .strip()
-                               .lower())
-
-    with open(rule.location + ".tmp", "w") as rule_file:
-        rule_file.write(rule.content)
-    failed = True
-    for pcap in pcaps:
-        try:
-            base = "/app/"
-            if os.name =="nt":
-                from django.conf import settings as s
-                base = str(s.BASE_DIR) + "/"
-
-            if not verify_legal_pcap(f"{base}{pcap.pcap_file}"):
-                raise Exception(f"illegal pcap file")
-            if not os.path.exists(f"{base}{pcap.pcap_file}"):
-                raise Exception(f"cant find file {base}{pcap.pcap_file}")
-            stdout, stderr = subprocess.Popen(
-                ["/home/snorty/snort3/bin/snort", "-R", rule.location + ".tmp", "-r", f"{base}{pcap.pcap_file}", "-A",
-                 "fast"], stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE).communicate()
-            if stdout and not stderr:
-                if b"total_alerts: " in stdout:
-                    return stdout.split(b"total_alerts: ")[1].split(b"\n")[0]
-                else:
-                    return 0
-        except Exception as e:
-            raise forms.ValidationError(f"could not validate rule on {base}{pcap.pcap_file}: {e}", code=405)
-    if failed:
-        raise Exception("no rules was chosen")
-    return stdout
-
-
-
 
 
 @admin.register(SnortRule)
@@ -393,30 +388,26 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                     try:
                         resppnse = {"data": []}
                         try:
-                            rule_parsed = suricataparser.parse_rule(item["Rule"])
+                            rule_parsed = Parser(item["Rule"], set([op.name for op in keyword.objects.filter(stage="service", available=True)]))
                         except:
                             raise Exception("bad rule format")
                         build_keyword_dict(resppnse, rule_parsed)
-                        for item_data in resppnse["data"]:
-                            temp_id = snort_rule.id
-                            snort_rules_options_to_save[temp_id] = []
-                            snort_rules_options_to_save[temp_id].append(SnortRuleViewArray(**item_data))
                         for op in rule_parsed.options:
-                            if op.name == "msg":
+                            if rule_parsed.options[op][0] == "msg":
                                 if snort_rule.group:
-                                    op.value = snort_rule.group.name + " "
+                                    rule_parsed.options[op] = "msg", [snort_rule.group.name + " "]
                                 else:
-                                    op.value = ""
+                                    rule_parsed.options[op] = "msg", [""]
                                 if snort_rule.name:
-                                    op.value += snort_rule.name
+                                    rule_parsed.options[op][1][0] += snort_rule.name
                                 continue
-                            if op.name == "sid":
-                                op.value = snort_rule.id
+                            if rule_parsed.options[op][0] == "sid":
+                                rule_parsed.options[op] = "sid", [snort_rule.id]
                                 continue
-                            if op.name == "metadata":
+                            if rule_parsed.options[op][0] == "metadata":
                                 new_value = []
                                 user_applyed = False
-                                for item_metadata in op.value.data:
+                                for item_metadata in rule_parsed.options[op][1]:
                                     if item_metadata.strip("'").strip().startswith("group "):
                                         if snort_rule.group:
                                             new_value.append(f"group {snort_rule.group.name}")
@@ -438,7 +429,7 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                                     new_value.append(item_metadata)
                                 if not user_applyed:
                                     new_value.append(f"employee {snort_rule.user}")
-                                op.value.data = new_value
+                                rule_parsed.options[op] = "metadata", new_value
                                 continue
                         snort_rule.content = rule_parsed
                         snort_rules_to_save.append(snort_rule)
@@ -468,16 +459,12 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                             if op.name == "sid":
                                 op.value = rule.id
                                 break
-                    rule.content = rule_parsed.build_rule()
+                    rule.content = rule_parsed.rule
                     rule.save()
                     if rule.active:
                         save_rule_to_s3(rule.id, rule.content)
                     else:
                         delete_rule_from_s3(rule.id)
-                    SnortRuleViewArray.objects.filter(snortId=rule.id).delete()
-                    for attr in snort_rules_options_to_save[rule_id]:
-                        attr.snortId = rule
-                        attr.save()
                 return HttpResponseRedirect("/admin/snort/snortrule/")
             return HttpResponseRedirect("/admin/snort/snortrule/import/")
 
@@ -499,12 +486,7 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
             return
         for rule in queryset:
             self.request = request
-            self.request.session["cloned_rule"] = {"cloned_rule": True,
-                           "rule_conetnt": rule.content.replace('"', "'"),
-                           "rule_description": rule.description,
-                           "rule_name": rule.name,
-                           "rule_treatment": rule.treatment,
-                           "rule_document": rule.document}
+            request.session["instance"] = serialize('json', [rule])
         request.path = "/admin/snort/snortrule/add/"
         request.path_info = "/admin/snort/snortrule/add/"
         request.method = "GET"
@@ -545,21 +527,21 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         return actions
 
     def snort_builder(self, obj):
-        set_rule = cache.get(obj.id)
-        if not set_rule:
-            set_rule = SnortRuleViewArray.objects.filter(snortId=obj.id)
-            cache.set(obj.id, set_rule)
-        else:
-            cache.set(obj.id, [])
+        # set_rule = cache.get(obj.id)
+        # if not set_rule:
+        #     set_rule = SnortRuleViewArray.objects.filter(snortId=obj.id)
+        #     cache.set(obj.id, set_rule)
+        # else:
+        #     cache.set(obj.id, [])
         context = {}
-        context["build_items"] = set_rule
-        context["actions"] = keyword.objects.filter(stage="action", available="True")
-        context["protocols"] = keyword.objects.filter(stage="protocol", available="True")
+        # todo handle caching of rule
+        # context["build_items"] = set_rule
+        # context["actions"] = keyword.objects.filter(stage="action", available="True")
+        # context["protocols"] = keyword.objects.filter(stage="protocol", available="True")
 
         tmp_context = copy.deepcopy(self.request.session.get("cloned_rule", {}))
         self.request.session["cloned_rule"] = {}
         tmp_context.update(context)
-
 
         snort_buider_section = render(self.request, "html/snortBuilder.html", tmp_context).content.decode("utf-8")
         full_rule_js = render(self.request, "html/full_rule.html")
@@ -576,14 +558,18 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         atkgroup.widget.can_change_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_change_related"})[0].value == "True"
         atkgroup.widget.can_delete_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_delete_related"})[0].value == "True"
         atkgroup.widget.can_view_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_view_related"})[0].value == "True"
-        Setting.objects.get_or_create(**{"name": "MAX_SANITY_MATCH_ALLOWED"},defaults={"value": 1000})
-        Setting.objects.get_or_create(**{"name": "MIN_SANITY_MATCH_ALLOWED"}, defaults={"value": 0})
-        Setting.objects.get_or_create(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
-        Setting.objects.get_or_create(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
+        a = Setting.objects.get_or_create(**{"name": "MAX_SANITY_MATCH_ALLOWED"},defaults={"value": 1000})
+        if a[1]:
+            a = Setting.objects.get_or_create(**{"name": "MIN_SANITY_MATCH_ALLOWED"}, defaults={"value": 0})
+            a = Setting.objects.get_or_create(**{"name": "MAX_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
+            a = Setting.objects.get_or_create(**{"name": "MIN_LEGAL_MATCH_ALLOWED"}, defaults={"value": 0})
         return form
 
     @transaction.atomic
     def clone_rule(self, request, obj: SnortRule):
+        # todo: clone rule does not work from main page
+        # todo: clone rule does not work from rule page
+        request.session["instance"] = serialize('json', [obj])
         return HttpResponseRedirect(f"/snort/snortrule/add/")
 
     clone_rule.label = "clone_rule"  # optional
@@ -591,9 +577,9 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
     def get_readonly_fields(self, request, obj=None):
         if obj and (obj.is_template or obj.admin_locked):
             read_only_fields = (
-            "id", "active", "user", "admin_locked", "snort_builder", "deleted", "rule_validation_section",)
+            "id", "snort_builder", "active", "user", "admin_locked", "deleted", "rule_validation_section",)
         else:
-            read_only_fields = ("id", "user", "admin_locked", "snort_builder", "deleted", "rule_validation_section")
+            read_only_fields = ("id", "snort_builder", "user", "admin_locked", "deleted", "rule_validation_section")
 
         return read_only_fields
 

@@ -39,7 +39,7 @@ def get_rule(request, rule_id=None, cloned=None):
         if full_rule:
             cache.delete(rule_id)
     if not full_rule and rule_id:
-        full_rule = SnortRule.objects.get(**{"id": rule_id}).content
+        full_rule = json.loads(build_rule_serialize(None, json.loads(build_rule_parse(None, full_rule=SnortRule.objects.get(**{"id": rule_id}).content).content.decode())).content.decode())["content"]
     return HttpResponse(full_rule)
 
 @csrf_exempt
@@ -165,9 +165,9 @@ def build_rule_parse(request, full_rule=""):
         rule_kw["unparsed_data"] = unparsed
     return JsonResponse(rule_kw)
 @csrf_exempt
-def build_rule_serialize(request):
+def build_rule_serialize(request, keywords=None):
     DO_NOT_QOUTE = Setting.objects.get(name="DO_NOT_QUOTE").value.split(",")
-    full_rule = json.loads(request.body.decode())
+    full_rule = keywords or json.loads(request.body.decode())
     rule_kw = {"header": OrderedDict(), "options": OrderedDict()}
     # get headers
     rule_kw["header"]["action"] = full_rule.get("action")
@@ -323,7 +323,11 @@ def check_pcap(request):
     response["stderr"] = []
     request_json = json.loads(request.body.decode())
     try:
-        validate_pcap_snort([pcaps.models.Pcap.objects.get(name=p) for p in request_json["pcaps"]], SnortRule(content=request_json["rule"]), response)
+        pcaps_choise = [pcaps.models.Pcap.objects.get(name=p) for p in request_json["pcaps"]]
+        if not pcaps_choise:
+            response["stderr"] = ["must choose at least one Pcap at 'Pcap sanity check' section"]
+            raise Exception()
+        validate_pcap_snort(pcaps_choise, SnortRule(content=request_json["rule"]), response)
         if len(response["stdout"]) > 0:
             response["stdout"].insert(0, "stdout:")
             response["stdout"].insert(0, "")

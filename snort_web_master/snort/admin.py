@@ -23,7 +23,7 @@ from snort.views import build_keyword_dict, build_rule_parse, validate_pcap_snor
 # Register your models here.
 from django.contrib import admin
 from django_object_actions import DjangoObjectActions
-from settings.models import Setting, attackGroup
+from settings.models import Setting, attackGroup, keyword
 from django.shortcuts import render
 from advanced_filters.admin import AdminAdvancedFiltersMixin
 from django.core.files.storage import default_storage
@@ -388,26 +388,26 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                     try:
                         resppnse = {"data": []}
                         try:
-                            rule_parsed = suricataparser.parse_rule(item["Rule"])
+                            rule_parsed = Parser(item["Rule"], set([op.name for op in keyword.objects.filter(stage="service", available=True)]))
                         except:
                             raise Exception("bad rule format")
                         build_keyword_dict(resppnse, rule_parsed)
                         for op in rule_parsed.options:
-                            if op.name == "msg":
+                            if rule_parsed.options[op][0] == "msg":
                                 if snort_rule.group:
-                                    op.value = snort_rule.group.name + " "
+                                    rule_parsed.options[op] = "msg", [snort_rule.group.name + " "]
                                 else:
-                                    op.value = ""
+                                    rule_parsed.options[op] = "msg", [""]
                                 if snort_rule.name:
-                                    op.value += snort_rule.name
+                                    rule_parsed.options[op][1][0] += snort_rule.name
                                 continue
-                            if op.name == "sid":
-                                op.value = snort_rule.id
+                            if rule_parsed.options[op][0] == "sid":
+                                rule_parsed.options[op] = "sid", [snort_rule.id]
                                 continue
-                            if op.name == "metadata":
+                            if rule_parsed.options[op][0] == "metadata":
                                 new_value = []
                                 user_applyed = False
-                                for item_metadata in op.value.data:
+                                for item_metadata in rule_parsed.options[op][1]:
                                     if item_metadata.strip("'").strip().startswith("group "):
                                         if snort_rule.group:
                                             new_value.append(f"group {snort_rule.group.name}")
@@ -429,7 +429,7 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                                     new_value.append(item_metadata)
                                 if not user_applyed:
                                     new_value.append(f"employee {snort_rule.user}")
-                                op.value.data = new_value
+                                rule_parsed.options[op] = "metadata", new_value
                                 continue
                         snort_rule.content = rule_parsed
                         snort_rules_to_save.append(snort_rule)
@@ -459,7 +459,7 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                             if op.name == "sid":
                                 op.value = rule.id
                                 break
-                    rule.content = rule_parsed.build_rule()
+                    rule.content = rule_parsed.rule
                     rule.save()
                     if rule.active:
                         save_rule_to_s3(rule.id, rule.content)

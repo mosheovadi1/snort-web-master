@@ -1,1 +1,1 @@
-alert file (content:"2"; tag:session,packets 10;)
+alert TCP any any -> any any (content:; tag:"session",packets 10;)
