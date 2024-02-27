@@ -1,10 +1,12 @@
 from django.db import models
-from settings.models import attackGroup
+from settings.models import attackGroup, Source
 from .snort_templates import types_list
+
 
 class SnortRule(models.Model):
     id = models.AutoField(primary_key=True)
     group = models.ForeignKey(attackGroup, blank=True, null=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Source, blank=True, null=True, on_delete=models.SET_NULL)
     active = models.BooleanField(default=False)
     admin_locked = models.BooleanField(default=False)
     user = models.CharField(max_length=100, blank=True, default=0)
@@ -18,6 +20,8 @@ class SnortRule(models.Model):
     treatment = models.CharField(max_length=12, blank=True)
     date = models.DateTimeField(auto_now=True)
     is_template = models.BooleanField(default=False)
+    exported = models.BooleanField(default=False)
+    sensitive = models.BooleanField(default=False)
     pcap_sanity_check = models.ManyToManyField("pcaps.Pcap", related_name='pcap_sanity_check', blank=True)
     pcap_legal_check = models.ManyToManyField("pcaps.white_Pcap", related_name='pcap_legal_check', blank=True)
     objects = models.Manager()

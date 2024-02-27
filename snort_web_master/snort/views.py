@@ -18,6 +18,12 @@ from settings.models import keyword
 from settings.models import Setting
 from django.core.serializers import serialize
 from django.core.cache import cache
+
+ESCAPE_CHAR = "\\"
+
+NEED_ESCAPING = [";", '"', ","]
+
+
 # Create your views here.
 
 def get_rule_keys(request, rule_id=None):
@@ -190,6 +196,10 @@ def build_rule_serialize(request, keywords=None):
                 append_value = ""
                 if isinstance(op_value, str):
                     append_value = f'"{op_value}"' if rule_kw['options'][index][0] not in DO_NOT_QOUTE else f'{op_value}'
+                    for forbitten_char in NEED_ESCAPING:
+                        if forbitten_char in op_value and op_value[op_value.index(forbitten_char) - 1:op_value.index(forbitten_char) + 1] != ESCAPE_CHAR + forbitten_char:
+                            rule_kw["warning"] == f"unescap {forbitten_char}" 
+                        
                 elif isinstance(op_value, bool):
                     if op_value:
                         append_value = "!"

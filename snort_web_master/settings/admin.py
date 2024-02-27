@@ -1,5 +1,5 @@
 from django.contrib import admin
-from settings.models import Setting
+from settings.models import Setting, Source
 from settings.models import attackGroup
 from settings.models import keyword
 # Register your models here.
@@ -10,6 +10,10 @@ class SettingAdmin(admin.ModelAdmin):
 
 @admin.register(attackGroup)
 class attack_groupAdmin(admin.ModelAdmin):
+    list_display = ['name', 'description']
+
+@admin.register(Source)
+class SourceAdmin(admin.ModelAdmin):
     list_display = ['name', 'description']
 
 

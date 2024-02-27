@@ -23,7 +23,7 @@ from snort.views import build_keyword_dict, build_rule_parse, validate_pcap_snor
 # Register your models here.
 from django.contrib import admin
 from django_object_actions import DjangoObjectActions
-from settings.models import Setting, attackGroup, keyword
+from settings.models import Setting, attackGroup, keyword, Source
 from django.shortcuts import render
 from advanced_filters.admin import AdminAdvancedFiltersMixin
 from django.core.files.storage import default_storage
@@ -54,14 +54,14 @@ class StoreAdminForm(forms.ModelForm):
 
 
 BASE_FIELDS = [
-    "id", "active", "is_template", "deleted", "admin_locked", 'name', "document", "treatment", "description",
-    "extra", "user"]
-FILTER_FIELDS = ("active", "is_template", "deleted", "admin_locked")
-ADVANCE_FILTER_FIELDS = tuple(i for i in BASE_FIELDS + ["content", ("pcap_sanity_check__name", "pcap_sanity_check_name"), ("pcap_legal_check__name", "pcap_legal_check_name"),("group_name", "group_name")])
+    "id", "active", "is_template", "sensitive", "deleted", "admin_locked", 'name', "document", "treatment", "description",
+    "extra", "user", "source"]
+FILTER_FIELDS = ("active", "exported", "is_template", "deleted", "sensitive", "admin_locked")
+ADVANCE_FILTER_FIELDS = tuple(i for i in BASE_FIELDS + ["content", ("pcap_sanity_check__name", "pcap_sanity_check_name"), ("pcap_legal_check__name", "pcap_legal_check_name"), ("group_name", "group_name")])
 FIELDS = [
-    "id", "snort_builder", "active", "is_template", "deleted", "admin_locked",'name', "document", "treatment",  "description",
-    "extra", "user", 'pcap_sanity_check', "pcap_legal_check"]
-SEARCH_FIELDS = tuple(i for i in BASE_FIELDS + ["content", "pcap_sanity_check__name", "pcap_legal_check__name", "group__name"])
+    "id", "snort_builder", "active", "is_template", "sensitive", "deleted", "admin_locked",'name', "document", "treatment",  "description",
+    "extra", "user", "source", 'pcap_sanity_check', "pcap_legal_check"]
+SEARCH_FIELDS = tuple(i for i in BASE_FIELDS + [ "exported", "content", "pcap_sanity_check__name", "pcap_legal_check__name", "group__name"])
 BASE_BUILDER_KEY = ("action", "protocol", "srcipallow", "srcip", "srcportallow", "srcport", "direction", "dstipallow",
                     "dstportallow", "dstport")
 
@@ -83,8 +83,8 @@ class SnortRuleAdminForm(forms.ModelForm):
 
     def clean_content(self):
         try:
-            parser = Parser(self.data["content"])
-            parser.parse_header()
+            parser = Parser(self.data["content"], "")
+            parser.parse_header("")
             options = parser.parse_options()
             for option in options:
                 try:
@@ -342,10 +342,13 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
     )
     filter_horizontal = ('pcap_sanity_check', "pcap_legal_check")
     list_display_links = ("id", "user", "name", "content", "description")
-    list_display = ("id", "user", "active", "name", "group", "description", "content", "date", "is_template", "deleted")
+    list_display = ("id", "user", "active", "name", "group", "description", "content", "date", "exported", "sensitive", "is_template", "deleted")
     search_fields = SEARCH_FIELDS
     form = SnortRuleAdminForm
-    actions = ['make_published', "make_delete", "make_clone"]
+    actions = ["make_published_online", 'make_published', "make_delete", "make_clone"]
+
+    def export_online_action(self, request):
+        return self.export_data(SnortRule.objects.all(), to_online=True)
 
     def export_action(self, request):
         return self.export_data(SnortRule.objects.all())
@@ -375,8 +378,11 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
                     snort_rule.user = getattr(request.user, request.user.USERNAME_FIELD)
                     snort_rule.description = item["Description"]
                     snort_rule.extra = item["Extra"]
+                    snort_rule.extra = item.get("Sensitive", False)
                     if item.get("Group"):
                         snort_rule.group = attackGroup.objects.get(name=item["Group"])
+                    if item.get("Source"):
+                        snort_rule.source = Source.objects.get(name=item["Source"])
                     snort_rule.name = item["Name"]
                     if item.get("Id") and item.get("Update") and request.user.is_superuser:
                         snort_rule.id = item["Id"]
@@ -496,12 +502,21 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
     def make_published(self, request, queryset):
         return self.export_data(queryset)
 
-    def export_data(self, queryset):
+    @admin.action(description='export selected snort to online')
+    def make_published_online(self, request, queryset):
+        return self.export_data(queryset, to_online=True)
+
+    def export_data(self, queryset, to_online=False):
         response = HttpResponse(
             content_type='application/force-download')  # mimetype is replaced by content_type for django 1.7
         response['Content-Disposition'] = 'attachment; filename=%s' % smart_str(f"SnortRule-{datetime.now()}.csv")
         str_content = "Active,Date,Deleted,Description,Extra,Group,Name,Id,User,Rule\n"
         for snort_item in queryset:
+            if to_online:
+                if snort_item.sensitive:
+                    continue
+                snort_item.exported = True
+                snort_item.save()
             content = snort_item.content.replace('"', "'")
             my_list = [snort_item.active, snort_item.date, snort_item.deleted, snort_item.description, snort_item.extra,
                        snort_item.group, snort_item.name, snort_item.pk, snort_item.user, content]
@@ -554,6 +569,11 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
         form.base_fields["pcap_sanity_check"].help_text = "Hold down “Control” to select more than one."
         form.base_fields["pcap_legal_check"].help_text = "Hold down “Control” to select more than one."
         atkgroup = form.base_fields["group"]
+        source = form.base_fields["source"]
+        source.widget.can_view_related = True
+        source.widget.can_add_related = False
+        source.widget.can_change_related = False
+        source.widget.can_delete_related = False
         atkgroup.widget.can_add_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_add_related"})[0].value == "True"
         atkgroup.widget.can_change_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_change_related"})[0].value == "True"
         atkgroup.widget.can_delete_related = Setting.objects.get_or_create(**{"name": "atkgroup_can_delete_related"})[0].value == "True"
@@ -577,9 +597,9 @@ class SnortRuleAdmin(DjangoObjectActions, AdminAdvancedFiltersMixin, ImportExpor
     def get_readonly_fields(self, request, obj=None):
         if obj and (obj.is_template or obj.admin_locked):
             read_only_fields = (
-            "id", "snort_builder", "active", "user", "admin_locked", "deleted", "rule_validation_section",)
+            "id", "snort_builder", "active", "user" ,"admin_locked", "deleted", "rule_validation_section",)
         else:
-            read_only_fields = ("id", "snort_builder", "user", "admin_locked", "deleted", "rule_validation_section")
+            read_only_fields = ("id", "snort_builder" , "user", "admin_locked", "deleted", "rule_validation_section")
 
         return read_only_fields
 

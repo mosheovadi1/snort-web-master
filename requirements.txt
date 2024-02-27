@@ -5,6 +5,6 @@ django-auth-ldap3-ad
 django-advanced-filters
 suricataparser
 django-import-export
-psycopg2-binary==2.9.1
+#psycopg2-binary==2.9.1
 gunicorn==20.1.0
 django-cors-headers

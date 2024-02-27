@@ -20,6 +20,15 @@ class attackGroup(models.Model):
     def __str__(self):
         return self.name
 
+
+class Source(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(max_length=256)
+    objects = models.Manager()
+
+    def __str__(self):
+        return self.name
+
 # Create your models here.
 class keyword(models.Model):
     """

@@ -34,6 +34,7 @@ if (document.getElementsByClassName("objectaction-item")[0] !== undefined){
     document.getElementsByClassName("objectaction-item")[0].onclick=function(){
             var copy_id_content = document.getElementById("id_content");
             sessionStorage.setItem("snort_content", copy_id_content.value);
+            sessionStorage.setItem("snort_sensitive", document.getElementById("id_sensitive").checked);
             sessionStorage.setItem("snort_description", document.getElementById("id_description").value);
             sessionStorage.setItem("snort_name", document.getElementById("id_name").value);
             sessionStorage.setItem("snort_treatment", document.getElementById("id_treatment").value);
@@ -71,9 +72,16 @@ function get_clone_rule(){
     if (sessionStorage.getItem("id_document")){
         document.getElementById("id_document").value = sessionStorage.getItem("snort_document").replace(/^[\x22\x27]|[\x22\x27]$/g, '');
     }
-
+    while (document.getElementById("id_sensitive")== undefined){
+        setTimeout(() => { get_clone_rule();}, 100)
+        return;
+    }
+    if (sessionStorage.getItem("snort_sensitive")){
+        document.getElementById("id_sensitive").checked = sessionStorage.getItem("snort_sensitive");
+    }
 
     sessionStorage.removeItem("snort_content");
+    sessionStorage.removeItem("snort_sensitive");
     sessionStorage.removeItem("snort_description");
     sessionStorage.removeItem("snort_name");
     sessionStorage.removeItem("snort_treatment");
