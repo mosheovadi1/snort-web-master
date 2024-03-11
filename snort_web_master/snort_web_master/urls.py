@@ -19,7 +19,7 @@ from django.shortcuts import redirect
 from snort.views import get_rule, get_rule_keys, get,\
     build_rule_parse,build_rule_serialize, \
     build_rule_keyword_to_rule, build_rule_rule_to_keywords, \
-    favico,get_current_user_name, check_pcap
+    favico,get_current_user_name, check_pcap, convert2to3
 from django.conf import settings
 from django.conf.urls.static import static
 import django.contrib.auth.admin
@@ -38,7 +38,8 @@ urlpatterns = [
     path("build_rule/rule_to_keywords", build_rule_rule_to_keywords,name="build_keyword"),
     path("build_rule_parse/", build_rule_parse, name="build_rule_parse"),
     path("build_rule_serialize/", build_rule_serialize, name="build_rule_serialize"),
-    path("current_user_name", get_current_user_name, name="get_current_user_name"),
+    path("build_rule_serialize/", build_rule_serialize, name="build_rule_serialize"),
+    path("convert2to3/", convert2to3, name="convert2to3"),
     path("get/<str:stage>/", get, name="get"),
     path("get/", get, name="get"),
     path('admin/', admin.site.urls, name="admin_main"),

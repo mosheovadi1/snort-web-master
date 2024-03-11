@@ -1,5 +1,6 @@
 import random
 import subprocess
+import time
 from collections import OrderedDict
 
 import suricataparser
@@ -350,6 +351,30 @@ def check_pcap(request):
         print(open("/var/log/snort/alert").read())
     except Exception as e:
         print(e)
+    return JsonResponse(response)
+
+@csrf_exempt
+def convert2to3(request):
+    response = {}
+    response["stdout"] = ""
+    response["stderr"] = ""
+    request_data = json.loads(request.body)
+    time_stamp = time.time()
+    old_file_name = f"{time_stamp}_old.rules"
+    new_file_name = f"{time_stamp}_new.rules"
+    with open(old_file_name, "w") as old_f:
+        old_f.write(request_data["rule"])
+    try:
+        response["stdout"], response["stderr"] = subprocess.Popen(["snort2lua", "-c", old_file_name, "-r", new_file_name])
+    except Exception as e:
+        response["stderr"] = str(e)
+    else:
+        with open(new_file_name, "r") as new_f:
+            response["data"] = new_f.read()
+    if os.path.exists(old_file_name):
+        os.remove(old_file_name)
+    if os.path.exists(new_file_name):
+        os.remove(new_file_name)
     return JsonResponse(response)
 
 
